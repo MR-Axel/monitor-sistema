@@ -27,7 +27,10 @@ body{
 /* encabezado ------------------------------------------------------------ */
 .top{display:flex;align-items:center;gap:14px}
 .top h1{font-size:18px;font-weight:600;white-space:nowrap}
-.eq{color:var(--txt2);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.eq{color:var(--txt2);font-size:13px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0}
+.eq b{color:var(--txt);font-weight:600}
+.eq .sep{color:var(--txt3);opacity:.6}
 .der{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
 .reloj{color:var(--txt3);font-family:var(--num);font-size:13px}
 .est{display:inline-flex;align-items:center;gap:8px;padding:7px 15px;border-radius:8px;
@@ -88,8 +91,13 @@ button.listo{color:var(--verde);border-color:var(--verde)}
   .pri{gap:10px}
 }
 
+/* min-width:0 es imprescindible: los items de una grilla arrancan en
+   min-width:auto, o sea que NO se achican por debajo del ancho de su
+   contenido. Sin esto la media query dispara pero las columnas no encogen y
+   el panel se desborda de costado en vez de reacomodarse. */
 .caja{background:var(--caja);border:1px solid var(--borde);border-radius:12px;
-  padding:15px 17px;min-height:0;display:flex;flex-direction:column}
+  padding:15px 17px;min-height:0;min-width:0;display:flex;flex-direction:column;
+  overflow:hidden}
 .caja.mal{border-color:var(--rojo);background:#1a1213}
 .tit{font-size:15.5px;font-weight:600;line-height:1.2}
 .ayu{font-size:12.5px;color:var(--txt3);margin-bottom:8px;line-height:1.3}
@@ -97,7 +105,8 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 /* tarjeta con medidor ---------------------------------------------------
    Los tamaños son fluidos: el canvas se dibuja al tamaño que le dé el CSS
    (medidor() lee clientWidth), así el medidor no se ve pixelado al achicar. */
-.pri{display:flex;align-items:center;gap:13px}
+.pri{display:flex;align-items:center;gap:13px;min-width:0}
+.pri>div{min-width:0}   /* mismo motivo que en .caja, pero para flex */
 .pri canvas{width:clamp(58px,5.8vw,92px);aspect-ratio:1/1;height:auto;flex-shrink:0}
 .cif{font-family:var(--num);font-size:clamp(26px,2.5vw,40px);font-weight:300;line-height:1}
 .cif small{font-size:clamp(12px,1vw,15px);color:var(--txt3);margin-left:3px}
@@ -146,8 +155,11 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 .rec b{color:var(--txt)}
 
 /* tablas y registro ----------------------------------------------------- */
-.scr{overflow-y:auto;max-height:300px}
-table{width:100%;border-collapse:collapse;font-size:14px}
+.scr{overflow-y:auto;overflow-x:hidden;max-height:300px;min-width:0}
+/* table-layout:fixed evita que un nombre largo de programa estire la tabla y
+   con eso impida que la columna se achique */
+table{width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed}
+td:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 th{text-align:left;color:var(--txt3);font-weight:600;font-size:12px;padding:0 0 5px;
   position:sticky;top:0;background:var(--caja)}
 td{padding:4px 0;border-top:1px solid var(--borde)}
@@ -461,8 +473,18 @@ function recomendar(m){
 /* ---------------------------------------------------------------- pintar */
 function pintar(m){
   ultima=m;
-  if(equipo) $('equipo').textContent=equipo.cpu.replace(' 8-Core Processor','')+
-    ' · '+equipo.nucleos+' núcleos / '+equipo.hilos+' hilos · '+(equipo.ramTotalMB/1024).toFixed(0)+' GB';
+  if(equipo){
+    // el sufijo "N-Core Processor" sobra y ya está el número de núcleos al lado
+    const cpu=equipo.cpu.replace(/\s+\d+-Core Processor/i,'').trim();
+    const partes=[
+      '<b>'+cpu+'</b> · '+equipo.nucleos+'N / '+equipo.hilos+'H',
+      '<b>'+(equipo.ramTotalMB/1024).toFixed(0)+' GB</b> RAM'
+    ];
+    if(equipo.gpuNombre)
+      partes.push('<b>'+equipo.gpuNombre.replace(/^NVIDIA GeForce /,'')+'</b>'+
+        (m.gpuVramTotMB?' · '+(m.gpuVramTotMB/1024).toFixed(0)+' GB':''));
+    $('equipo').innerHTML=partes.join('<span class="sep"> · </span>');
+  }
 
   // fila 1
   const cv=colV12(m.v12);

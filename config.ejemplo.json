@@ -5,6 +5,8 @@
   "intervaloMs": 2000,
   "lhmUrl": "http://localhost:8085/data.json",
   "permitirCerrarProgramas": true,
+  "abrirNavegador": "app",
+  "ventana": "1280x900",
   "umbrales": {
     "cpuTempMax": 92,
     "gpuTempMax": 83,

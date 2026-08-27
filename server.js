@@ -41,6 +41,9 @@ const CONFIG_POR_DEFECTO = {
   //   "normal" pestaña en tu navegador de siempre; queda abierta al salir
   //   "no"     no abre nada
   abrirNavegador: 'app',
+  // Tamaño de esa ventana: "ANCHOxALTO", o "maximizada" para que ocupe todo.
+  // El panel se acomoda solo al tamaño que le des, incluso angosto de costado.
+  ventana: '1280x900',
   umbrales: {
     cpuTempMax: 92, gpuTempMax: 83, vrmTempMax: 100,
     ramLibreMinMB: 700, commitMaxPct: 88,
@@ -540,16 +543,24 @@ function abrirPanel(url) {
     const exe = buscarNavegador();
     if (exe) {
       const perfil = path.join(os.tmpdir(), 'monitor-sistema-perfil');
-      // maximizada en vez de un tamano fijo: asi aprovecha la pantalla que
-      // haya, sea cual sea, y el panel se acomoda solo
-      navegador = spawn(exe, [
+      const args = [
         '--app=' + url,
         '--user-data-dir=' + perfil,
-        '--start-maximized',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-features=Translate,MediaRouter',
-      ], { detached: false, stdio: 'ignore' });
+      ];
+      const v = String(CFG.ventana || '1280x900').toLowerCase().trim();
+      if (v === 'maximizada' || v === 'maximizado') {
+        args.push('--start-maximized');
+      } else {
+        const m = v.match(/^(\d{3,5})\s*x\s*(\d{3,5})$/);
+        const ancho = m ? m[1] : '1280';
+        const alto = m ? m[2] : '900';
+        if (!m) console.log('  ventana: "' + CFG.ventana + '" no se entiende, se usa 1280x900');
+        args.push('--window-size=' + ancho + ',' + alto);
+      }
+      navegador = spawn(exe, args, { detached: false, stdio: 'ignore' });
       navegador.on('error', () => { navegador = null; });
       // si cerras la ventana a mano, se para tambien el monitor
       navegador.on('exit', () => { navegador = null; cerrar(); });
