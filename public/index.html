@@ -649,12 +649,21 @@ document.getElementById('procs').addEventListener('click',async ev=>{
   try{
     const res=await pedirCierre(nombre,false);
     if(res.ok){ b.textContent='✓'; return; }
-    // no cerró solo: puede estar esperando que confirmes en la propia app
-    if(confirm('No se cerró solo.\n\n'+(res.detalle||'')+'\n\n'+
-      '¿Forzar el cierre? OJO: se pierde todo lo que no esté guardado.')){
+
+    // Sigue vivo. Lo más común: la aplicación entiende el pedido de cierre
+    // como "minimizate a la bandeja" y se queda corriendo.
+    const cerrados = res.cerrados
+      ? 'Se cerraron '+res.cerrados+' de '+res.antes+', pero quedan '+res.despues+'.'
+      : nombre+' ignoró el pedido: siguen los '+res.despues+' procesos.';
+    if(confirm(cerrados+'\n\n'+
+      'Suele pasar con las apps que se minimizan a la bandeja en vez de cerrarse '+
+      '(Telegram, Discord, Slack), o cuando quedó un diálogo esperando respuesta.\n\n'+
+      '¿Forzar el cierre?\nOJO: se pierde todo lo que no esté guardado.')){
+      b.textContent='…';
       const f=await pedirCierre(nombre,true);
       b.textContent=f.ok?'✓':'✕';
-      if(!f.ok) alert('No se pudo cerrar: '+(f.error||f.detalle||'error desconocido'));
+      if(!f.ok){ b.disabled=false;
+        alert('Tampoco se pudo forzar. Quedan '+f.despues+' procesos.\n\n'+(f.error||f.detalle||'')); }
     } else { b.disabled=false; b.textContent='✕'; }
   }catch(e){
     b.disabled=false; b.textContent='✕';

@@ -522,15 +522,50 @@ function origenValido(req) {
   } catch (e) { return false; }
 }
 
-function cerrarPrograma(nombre, forzar, listo) {
-  const args = ['/IM', nombre + '.exe', '/T'];
-  if (forzar) args.push('/F');
-  const p = spawn('taskkill', args, { windowsHide: true });
+// Cuenta cuantos procesos vivos hay con ese nombre.
+function contarProcesos(nombre, listo) {
+  const p = spawn('tasklist', ['/FI', 'IMAGENAME eq ' + nombre + '.exe', '/NH', '/FO', 'CSV'], { windowsHide: true });
   let salida = '';
   p.stdout.on('data', b => { salida += b.toString(); });
-  p.stderr.on('data', b => { salida += b.toString(); });
-  p.on('error', e => listo({ ok: false, detalle: e.message }));
-  p.on('close', code => listo({ ok: code === 0, codigo: code, detalle: salida.trim() }));
+  p.on('error', () => listo(0));
+  p.on('close', () => {
+    // sin coincidencias tasklist imprime un texto suelto, no filas CSV
+    const filas = salida.split('\n').filter(l => l.trim().startsWith('"'));
+    listo(filas.length);
+  });
+}
+
+// OJO con el codigo de salida de taskkill: sin /F devuelve 0 en cuanto LOGRA
+// ENVIAR la senal de cierre, no cuando el proceso muere. Muchas aplicaciones
+// (Telegram, Discord, Slack) responden a WM_CLOSE minimizandose a la bandeja
+// y siguen vivas. Por eso hay que contar los procesos despues, y no confiar
+// en el codigo de retorno.
+function cerrarPrograma(nombre, forzar, listo) {
+  contarProcesos(nombre, antes => {
+    if (antes === 0) return listo({ ok: true, antes: 0, despues: 0, detalle: 'No estaba corriendo.' });
+
+    const args = ['/IM', nombre + '.exe', '/T'];
+    if (forzar) args.push('/F');
+    const p = spawn('taskkill', args, { windowsHide: true });
+    let salida = '';
+    p.stdout.on('data', b => { salida += b.toString(); });
+    p.stderr.on('data', b => { salida += b.toString(); });
+    p.on('error', e => listo({ ok: false, antes: antes, despues: antes, detalle: e.message }));
+    p.on('close', () => {
+      // se le da tiempo a cerrar: las aplicaciones grandes tardan un poco
+      setTimeout(() => {
+        contarProcesos(nombre, despues => {
+          listo({
+            ok: despues === 0,
+            antes: antes,
+            despues: despues,
+            cerrados: antes - despues,
+            detalle: salida.trim(),
+          });
+        });
+      }, forzar ? 900 : 2600);
+    });
+  });
 }
 
 // ---------------------------------------------------------------- servidor
@@ -579,7 +614,8 @@ const server = http.createServer((req, res) => {
       if (!CERRABLES.has(d.nombre)) return responder(403, { error: 'Ese programa no se puede cerrar desde el panel' });
 
       cerrarPrograma(d.nombre, !!d.forzar, r => {
-        console.log(`  [cerrar] ${d.nombre}${d.forzar ? ' (forzado)' : ''} -> ${r.ok ? 'ok' : 'fallo'}`);
+        console.log(`  [cerrar] ${d.nombre}${d.forzar ? ' forzado' : ''}: ` +
+          `${r.antes} -> ${r.despues} procesos ${r.ok ? '(cerrado)' : '(sigue vivo)'}`);
         responder(200, r);
       });
     });

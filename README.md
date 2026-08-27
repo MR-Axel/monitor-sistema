@@ -89,6 +89,16 @@ mouse por su fila. Pide confirmación y después manda un cierre **amable**
 (`taskkill` sin `/F`), así la aplicación puede preguntarte si querés guardar.
 Solo si eso no alcanza ofrece forzar, en un segundo paso aparte.
 
+**No se confía en el código de salida de `taskkill`.** Sin `/F` devuelve 0 en
+cuanto logra *enviar* la señal de cierre, no cuando el proceso muere. Muchas
+aplicaciones (Telegram, Discord, Slack) responden a `WM_CLOSE` minimizándose a
+la bandeja y siguen corriendo. Por eso se cuentan los procesos antes y después
+con `tasklist`, y el resultado dice cuántos cerraron de verdad:
+
+```json
+{"ok": false, "antes": 1, "despues": 1, "cerrados": 0}
+```
+
 Cómo está protegido, porque esto apaga procesos:
 
 - El servidor escucha **solo en `127.0.0.1`**
