@@ -14,8 +14,6 @@ disco** (`fsync`) en cada una. Si el equipo se corta, las últimas muestras
 quedan grabadas igual. Al arrancar de nuevo detecta que el registro anterior
 terminó sin marca de cierre y guarda los momentos previos como evidencia.
 
-![Captura del panel](docs/captura.png)
-
 ## Qué muestra
 
 **Diagnóstico eléctrico y térmico**
