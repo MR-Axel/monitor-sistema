@@ -540,10 +540,12 @@ function abrirPanel(url) {
     const exe = buscarNavegador();
     if (exe) {
       const perfil = path.join(os.tmpdir(), 'monitor-sistema-perfil');
+      // maximizada en vez de un tamano fijo: asi aprovecha la pantalla que
+      // haya, sea cual sea, y el panel se acomoda solo
       navegador = spawn(exe, [
         '--app=' + url,
         '--user-data-dir=' + perfil,
-        '--window-size=1680,1020',
+        '--start-maximized',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-features=Translate,MediaRouter',

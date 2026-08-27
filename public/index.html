@@ -38,13 +38,55 @@ button{background:var(--caja);border:1px solid var(--borde);color:var(--txt);
 button:hover{background:#1c2230;border-color:var(--azul)}
 button.listo{color:var(--verde);border-color:var(--verde)}
 
-/* grillas --------------------------------------------------------------- */
+/* grillas ---------------------------------------------------------------
+   El panel tiene que servir tanto a pantalla completa como pegado a un
+   costado. Las columnas se van plegando por ancho, y los tamaños se achican
+   por alto, para que no haya que hacer scroll ni perder tarjetas.        */
 .g{display:grid;gap:14px}
 .g4{grid-template-columns:repeat(4,1fr)}
 .g5{grid-template-columns:repeat(5,1fr)}
 .gb{grid-template-columns:1.15fr .8fr 1.05fr}
 .g2{grid-template-columns:1fr 1fr}
-@media(max-width:1150px){.g5{grid-template-columns:repeat(3,1fr)}.gb,.g2{grid-template-columns:1fr}}
+
+/* --- por ANCHO --- */
+@media(max-width:1560px){ .g5{grid-template-columns:repeat(4,1fr)} }
+@media(max-width:1280px){
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .g5{grid-template-columns:repeat(3,1fr)}
+  .gb{grid-template-columns:1fr 1fr}
+  .gb>:nth-child(3){grid-column:1/-1}     /* procesos ocupa el ancho entero */
+}
+@media(max-width:940px){
+  .g5{grid-template-columns:repeat(2,1fr)}
+  .gb{grid-template-columns:1fr}
+  .gb>:nth-child(3){grid-column:auto}
+  .g2{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .g4,.g5{grid-template-columns:1fr}
+  .temps{grid-template-columns:1fr}
+  .top h1{font-size:16px}
+  .eq,.reloj{display:none}                /* en muy angosto, solo lo esencial */
+}
+
+/* --- por ALTO: ventana baja o pantalla chica --- */
+@media(max-height:940px){
+  body{padding:13px 15px;gap:11px}
+  .caja{padding:12px 14px}
+  .ayu{margin-bottom:6px}
+  .graf{max-height:48px}
+  .temps{max-height:220px}
+  .scr,.recs{max-height:230px}
+}
+@media(max-height:800px){
+  body{padding:10px 12px;gap:9px}
+  .caja{padding:10px 12px}
+  .ayu{font-size:11.5px;margin-bottom:5px}
+  .graf{max-height:38px;min-height:20px}
+  .temps{max-height:180px}
+  .scr,.recs{max-height:180px}
+  .pri{gap:10px}
+}
 
 .caja{background:var(--caja);border:1px solid var(--borde);border-radius:12px;
   padding:15px 17px;min-height:0;display:flex;flex-direction:column}
@@ -52,16 +94,18 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 .tit{font-size:15.5px;font-weight:600;line-height:1.2}
 .ayu{font-size:12.5px;color:var(--txt3);margin-bottom:8px;line-height:1.3}
 
-/* tarjeta con medidor --------------------------------------------------- */
+/* tarjeta con medidor ---------------------------------------------------
+   Los tamaños son fluidos: el canvas se dibuja al tamaño que le dé el CSS
+   (medidor() lee clientWidth), así el medidor no se ve pixelado al achicar. */
 .pri{display:flex;align-items:center;gap:13px}
-.pri canvas{width:88px;height:88px;flex-shrink:0}
-.cif{font-family:var(--num);font-size:40px;font-weight:300;line-height:1}
-.cif small{font-size:15px;color:var(--txt3);margin-left:3px}
-.ext{font-size:13.5px;color:var(--txt2);margin-top:7px;line-height:1.5}
+.pri canvas{width:clamp(58px,5.8vw,92px);aspect-ratio:1/1;height:auto;flex-shrink:0}
+.cif{font-family:var(--num);font-size:clamp(26px,2.5vw,40px);font-weight:300;line-height:1}
+.cif small{font-size:clamp(12px,1vw,15px);color:var(--txt3);margin-left:3px}
+.ext{font-size:clamp(11.5px,.85vw,13.5px);color:var(--txt2);margin-top:7px;line-height:1.5}
 .ext b{color:var(--txt);font-weight:600;font-family:var(--num)}
 
 /* tarjeta de carga ------------------------------------------------------ */
-.carga .cif{font-size:34px}
+.carga .cif{font-size:clamp(24px,2.2vw,34px)}
 .sub{font-size:13px;color:var(--txt2);margin-top:6px;line-height:1.45}
 .sub b{color:var(--txt);font-family:var(--num);font-weight:600}
 /* barra de dos tramos: usado + libre */
@@ -85,8 +129,8 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 
 /* ventiladores: compactos, en una fila que puede envolver --------------- */
 .vents{display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap;align-content:start}
-.vent{text-align:center;min-width:74px}
-.vent canvas{width:42px;height:42px;display:block;margin:0 auto}
+.vent{text-align:center;min-width:clamp(56px,4.6vw,80px)}
+.vent canvas{width:clamp(34px,2.9vw,46px);aspect-ratio:1/1;height:auto;display:block;margin:0 auto}
 .vent .rpm{font-family:var(--num);font-size:14.5px;margin-top:2px;line-height:1.2}
 .vent .nom{font-size:12px;color:var(--txt3);line-height:1.2;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -275,32 +319,37 @@ const colV12=v=>v==null?C.gris:escala(Math.abs(v-12),[[0,C.verde],[.25,C.verde],
 const push=(k,v)=>{if(v==null||isNaN(v))return;(S[k]=S[k]||[]).push(v);if(S[k].length>H)S[k].shift();};
 
 /* medidores ------------------------------------------------------------- */
+// El tamaño lo decide el CSS y el canvas se dibuja a esa medida (por eso se
+// lee clientWidth): si se dibujara fijo y lo escalara el navegador, al
+// achicar la ventana los medidores saldrían borrosos.
 function medidor(id,val,min,max,color,marcas){
-  const c=$(id); if(!c) return; const L=88;
+  const c=$(id); if(!c) return;
+  const L=Math.round(c.clientWidth)||88; if(!L) return;
   if(c.width!==L*R){c.width=L*R;c.height=L*R;}
   const x=c.getContext('2d'); x.setTransform(R,0,0,R,0,0); x.clearRect(0,0,L,L);
-  const cx=L/2,cy=L/2,r=33,a0=Math.PI*.75,a1=Math.PI*2.25;
+  const cx=L/2,cy=L/2,r=L*.375,gr=L*.09,a0=Math.PI*.75,a1=Math.PI*2.25;
   x.lineCap='round';
-  x.beginPath();x.arc(cx,cy,r,a0,a1);x.strokeStyle=C.borde;x.lineWidth=8;x.stroke();
+  x.beginPath();x.arc(cx,cy,r,a0,a1);x.strokeStyle=C.borde;x.lineWidth=gr;x.stroke();
   (marcas||[]).forEach(mk=>{
     const t=(mk.v-min)/(max-min); if(t<0||t>1)return;
     const a=a0+(a1-a0)*t; x.lineCap='butt';
-    x.beginPath();x.arc(cx,cy,r+7,a-.025,a+.025);x.strokeStyle=mk.c;x.lineWidth=5;x.stroke();
+    x.beginPath();x.arc(cx,cy,r+gr*.85,a-.025,a+.025);x.strokeStyle=mk.c;x.lineWidth=gr*.62;x.stroke();
     x.lineCap='round';
   });
   if(val==null||isNaN(val))return;
   const t=Math.max(0,Math.min(1,(val-min)/(max-min)));
-  x.beginPath();x.arc(cx,cy,r,a0,a0+(a1-a0)*t);x.strokeStyle=color;x.lineWidth=8;x.stroke();
+  x.beginPath();x.arc(cx,cy,r,a0,a0+(a1-a0)*t);x.strokeStyle=color;x.lineWidth=gr;x.stroke();
 }
 function medVent(cv,rpm,max){
-  const L=50; if(cv.width!==L*R){cv.width=L*R;cv.height=L*R;}
+  const L=Math.round(cv.clientWidth)||42; if(!L) return;
+  if(cv.width!==L*R){cv.width=L*R;cv.height=L*R;}
   const x=cv.getContext('2d');x.setTransform(R,0,0,R,0,0);x.clearRect(0,0,L,L);
-  const cx=L/2,cy=L/2,r=18,a0=Math.PI*.75,a1=Math.PI*2.25;
+  const cx=L/2,cy=L/2,r=L*.37,gr=L*.11,a0=Math.PI*.75,a1=Math.PI*2.25;
   x.lineCap='round';
-  x.beginPath();x.arc(cx,cy,r,a0,a1);x.strokeStyle=C.borde;x.lineWidth=5;x.stroke();
+  x.beginPath();x.arc(cx,cy,r,a0,a1);x.strokeStyle=C.borde;x.lineWidth=gr;x.stroke();
   if(!rpm)return;
   x.beginPath();x.arc(cx,cy,r,a0,a0+(a1-a0)*Math.min(1,rpm/max));
-  x.strokeStyle=C.azul;x.lineWidth=5;x.stroke();
+  x.strokeStyle=C.azul;x.lineWidth=gr;x.stroke();
 }
 
 /* gráfico --------------------------------------------------------------- */
@@ -723,7 +772,14 @@ setInterval(()=>{
   const s=Math.floor((Date.now()-new Date(equipo.arranque))/1000);
   $('reloj').textContent='Encendido hace '+Math.floor(s/3600)+' h '+Math.floor(s%3600/60)+' min';
 },1000);
-window.addEventListener('resize',()=>{if(ultima)pintar(ultima);});
+// Al cambiar el tamaño hay que redibujar todos los canvas, porque su medida
+// de dibujo depende del tamaño que les dio el CSS. Con espera para no
+// repintar en cada píxel mientras se arrastra el borde de la ventana.
+let temporizadorTam=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(temporizadorTam);
+  temporizadorTam=setTimeout(()=>{ if(ultima) pintar(ultima); },140);
+});
 </script>
 </body>
 </html>
