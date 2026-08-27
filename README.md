@@ -82,6 +82,30 @@ Corte en muestras-2026-08-28.jsonl · última muestra 28/8/2026, 01:12:44
 
 Los archivos crudos quedan en `logs/`, un JSON por línea.
 
+## Cerrar programas desde el panel
+
+En la tabla de memoria, cada programa conocido tiene una **✕** al pasar el
+mouse por su fila. Pide confirmación y después manda un cierre **amable**
+(`taskkill` sin `/F`), así la aplicación puede preguntarte si querés guardar.
+Solo si eso no alcanza ofrece forzar, en un segundo paso aparte.
+
+Cómo está protegido, porque esto apaga procesos:
+
+- El servidor escucha **solo en `127.0.0.1`**
+- Hay un **token aleatorio por arranque** que viaja únicamente por el stream
+  SSE, del mismo origen: una página de otro sitio no puede conocerlo
+- Se valida la cabecera `Origin`
+- **Lista blanca**: solo programas de usuario. Un proceso del sistema se
+  rechaza aunque el token sea válido
+
+```
+$ curl -X POST .../api/cerrar -d '{"token":"<válido>","nombre":"svchost"}'
+{"error":"Ese programa no se puede cerrar desde el panel"}
+```
+
+Para dejar el panel de solo lectura: `"permitirCerrarProgramas": false` en
+`config.json`.
+
 ## Configuración
 
 Casi todo se detecta solo: procesador, núcleos, hilos, memoria instalada,

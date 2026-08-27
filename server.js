@@ -32,11 +32,24 @@ const CONFIG_POR_DEFECTO = {
   puerto: 7070,
   intervaloMs: 2000,
   lhmUrl: 'http://localhost:8085/data.json',
+  // Permite cerrar programas desde el panel. Ponelo en false para que el
+  // panel quede de solo lectura.
+  permitirCerrarProgramas: true,
   umbrales: {
     cpuTempMax: 92, gpuTempMax: 83, vrmTempMax: 100,
     ramLibreMinMB: 700, commitMaxPct: 88,
   },
 };
+
+// Programas que el panel puede cerrar. Es una lista blanca a proposito: nada
+// del sistema entra aca, aunque aparezca arriba de todo en la tabla. Cerrar
+// svchost, MsMpEng o el propio explorador rompe Windows.
+const CERRABLES = new Set([
+  'claude', 'comet', 'chrome', 'firefox', 'msedge', 'brave', 'opera', 'vivaldi',
+  'Code', 'Discord', 'slack', 'Telegram', 'WhatsApp', 'msedgewebview2',
+  'Spotify', 'steam', 'EpicGamesLauncher', 'Notion', 'obsidian', 'Teams',
+  'thunderbird', 'zoom', 'Signal', 'GitHubDesktop', 'postman', 'insomnia',
+]);
 
 function cargarConfig() {
   const ruta = path.join(RAIZ, 'config.json');
@@ -489,6 +502,37 @@ function procesarMuestra(m) {
   for (const c of clientes) { try { c.write(payload); } catch (e) {} }
 }
 
+// ------------------------------------------------------- cerrar programas
+// Ficha de seguridad, porque esto apaga procesos del usuario:
+//  - el servidor escucha SOLO en 127.0.0.1
+//  - hay un token aleatorio por arranque, que solo viaja por el stream SSE
+//    (mismo origen), asi que una pagina de otro sitio no puede conocerlo
+//  - se valida la cabecera Origin
+//  - solo se aceptan nombres de la lista blanca CERRABLES
+//  - por defecto se pide el cierre amable (sin /F) para que la aplicacion
+//    pueda preguntar si guardar; forzar es un segundo paso explicito
+const TOKEN = require('crypto').randomBytes(24).toString('hex');
+
+function origenValido(req) {
+  const o = req.headers.origin;
+  if (!o) return true; // fetch same-origin puede no mandarlo
+  try {
+    const u = new URL(o);
+    return u.hostname === '127.0.0.1' || u.hostname === 'localhost';
+  } catch (e) { return false; }
+}
+
+function cerrarPrograma(nombre, forzar, listo) {
+  const args = ['/IM', nombre + '.exe', '/T'];
+  if (forzar) args.push('/F');
+  const p = spawn('taskkill', args, { windowsHide: true });
+  let salida = '';
+  p.stdout.on('data', b => { salida += b.toString(); });
+  p.stderr.on('data', b => { salida += b.toString(); });
+  p.on('error', e => listo({ ok: false, detalle: e.message }));
+  p.on('close', code => listo({ ok: code === 0, codigo: code, detalle: salida.trim() }));
+}
+
 // ---------------------------------------------------------------- servidor
 const corteAnterior = revisarSesionAnterior();
 
@@ -501,14 +545,44 @@ const server = http.createServer((req, res) => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
+    // el token viaja solo por aca: mismo origen, no queda en el HTML estatico
     res.write('data: ' + JSON.stringify({
       info: info,
       historial: historial,
       eventos: eventos.slice(-30),
       corteAnterior: corteAnterior,
+      token: CFG.permitirCerrarProgramas ? TOKEN : null,
+      cerrables: CFG.permitirCerrarProgramas ? Array.from(CERRABLES) : [],
     }) + '\n\n');
     clientes.add(res);
     req.on('close', () => clientes.delete(res));
+    return;
+  }
+
+  if (url.pathname === '/api/cerrar' && req.method === 'POST') {
+    const responder = (estado, cuerpo) => {
+      res.writeHead(estado, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(cuerpo));
+    };
+    if (!CFG.permitirCerrarProgramas) return responder(403, { error: 'Deshabilitado en config.json' });
+    if (!origenValido(req)) return responder(403, { error: 'Origen no permitido' });
+
+    let cuerpo = '';
+    req.on('data', c => {
+      cuerpo += c;
+      if (cuerpo.length > 4096) req.destroy();
+    });
+    req.on('end', () => {
+      let d;
+      try { d = JSON.parse(cuerpo); } catch (e) { return responder(400, { error: 'JSON invalido' }); }
+      if (d.token !== TOKEN) return responder(403, { error: 'Token invalido' });
+      if (!CERRABLES.has(d.nombre)) return responder(403, { error: 'Ese programa no se puede cerrar desde el panel' });
+
+      cerrarPrograma(d.nombre, !!d.forzar, r => {
+        console.log(`  [cerrar] ${d.nombre}${d.forzar ? ' (forzado)' : ''} -> ${r.ok ? 'ok' : 'fallo'}`);
+        responder(200, r);
+      });
+    });
     return;
   }
 

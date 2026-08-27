@@ -111,6 +111,13 @@ td.n{text-align:right;font-family:var(--num);color:var(--txt2)}
 .mb{display:inline-block;width:46px;height:5px;background:var(--borde);border-radius:3px;
   vertical-align:middle;margin-left:8px}
 .mb i{display:block;height:100%;background:var(--azul);border-radius:3px}
+/* botón de cerrar: discreto hasta que pasás por la fila, para que no invite
+   a apretarlo sin querer */
+button.x{background:none;border:0;color:var(--txt3);font-size:14px;padding:2px 5px;
+  border-radius:5px;cursor:pointer;opacity:.25;transition:opacity .15s}
+tr:hover button.x{opacity:1}
+button.x:hover{background:#3a1518;color:var(--rojo)}
+button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
 .reg div{display:flex;gap:10px;padding:3.5px 0;border-top:1px solid var(--borde);font-size:13px}
 .reg time{color:var(--txt3);font-family:var(--num);flex-shrink:0}
 .nada{color:var(--txt3);font-size:13.5px;padding:10px 0}
@@ -212,6 +219,8 @@ td.n{text-align:right;font-family:var(--num);color:var(--txt2)}
 const $=i=>document.getElementById(i);
 const H=180, S={}, R=window.devicePixelRatio||1;
 let ultima=null, equipo=null, corte=null;
+let token=null;              // llega por el stream, habilita cerrar programas
+let cerrables=new Set();     // lista blanca que decide el servidor
 const registro=[];
 /* Nada de esto está cableado: la potencia de la fuente sale de config.json
    (es lo único que ningún sensor puede reportar) y el resto se detecta.  */
@@ -514,11 +523,17 @@ function pintar(m){
   $('recs').innerHTML=recomendar(m).map(r=>
     '<div class="rec '+r.n+'"><span class="ic">'+r.i+'</span><span>'+r.t+'</span></div>').join('');
 
-  // procesos
+  // procesos. Los que estan en la lista blanca del servidor llevan botón de
+  // cerrar; el resto no, porque apagar un proceso del sistema rompe Windows.
   const mx2=(m.procesos&&m.procesos[0])?m.procesos[0].m:1;
-  $('procs').innerHTML=(m.procesos||[]).map(p=>
-    '<tr><td>'+p.n+'</td><td class="n">'+p.p+'</td><td class="n">'+p.m+
-    '</td><td style="width:58px"><span class="mb"><i style="width:'+(100*p.m/mx2)+'%"></i></span></td></tr>').join('');
+  $('procs').innerHTML=(m.procesos||[]).map(p=>{
+    const puede=cerrables.has(p.n);
+    return '<tr><td>'+p.n+'</td><td class="n">'+p.p+'</td><td class="n">'+p.m+
+      '</td><td style="width:58px"><span class="mb"><i style="width:'+(100*p.m/mx2)+'%"></i></span></td>'+
+      '<td style="width:26px">'+(puede
+        ? '<button class="x" data-p="'+p.n+'" data-i="'+p.p+'" data-m="'+p.m+'" title="Cerrar '+p.n+'">✕</button>'
+        : '')+'</td></tr>';
+  }).join('');
 
   // estado
   const e=$('est');
@@ -610,12 +625,50 @@ $('copiar').onclick=async()=>{
   setTimeout(()=>{b.textContent='Copiar informe';b.classList.remove('listo');},1800);
 };
 
+/* ------------------------------------------------------- cerrar programas
+   Se pide primero el cierre amable (taskkill sin /F) para que la aplicación
+   pueda preguntar si guardar. Forzar es un segundo paso que hay que aceptar
+   aparte, porque ahí sí se pierde lo que no esté guardado.                 */
+async function pedirCierre(nombre,forzar){
+  const r=await fetch('/api/cerrar',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token:token,nombre:nombre,forzar:forzar})
+  });
+  return r.json();
+}
+
+document.getElementById('procs').addEventListener('click',async ev=>{
+  const b=ev.target.closest('button.x'); if(!b) return;
+  const nombre=b.dataset.p, inst=b.dataset.i, mb=b.dataset.m;
+  if(!token){ alert('Cerrar programas está deshabilitado en config.json.'); return; }
+
+  if(!confirm('¿Cerrar '+nombre+'?\n\n'+inst+' procesos · '+mb+' MB\n\n'+
+    'Se le pide que cierre normalmente, así puede preguntarte si guardar.')) return;
+
+  b.disabled=true; b.textContent='…';
+  try{
+    const res=await pedirCierre(nombre,false);
+    if(res.ok){ b.textContent='✓'; return; }
+    // no cerró solo: puede estar esperando que confirmes en la propia app
+    if(confirm('No se cerró solo.\n\n'+(res.detalle||'')+'\n\n'+
+      '¿Forzar el cierre? OJO: se pierde todo lo que no esté guardado.')){
+      const f=await pedirCierre(nombre,true);
+      b.textContent=f.ok?'✓':'✕';
+      if(!f.ok) alert('No se pudo cerrar: '+(f.error||f.detalle||'error desconocido'));
+    } else { b.disabled=false; b.textContent='✕'; }
+  }catch(e){
+    b.disabled=false; b.textContent='✕';
+    alert('Falló la petición: '+e.message);
+  }
+});
+
 /* stream ---------------------------------------------------------------- */
 const es=new EventSource('/api/stream');
 es.onmessage=ev=>{
   const d=JSON.parse(ev.data);
   if(d.info){ const primero=!equipo; equipo=d.info; if(primero||!$('ayuW').dataset.ok){
     aplicarConfig(equipo); $('ayuW').dataset.ok='1'; } }
+  if(d.token!==undefined){ token=d.token; cerrables=new Set(d.cerrables||[]); }
   if(d.historial){
     d.historial.forEach(m=>{
       push('cpu',m.cpuPct); push('com',m.commitPct); push('ct',m.cpuTemp);
