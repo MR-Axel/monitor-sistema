@@ -329,50 +329,75 @@ const gb=mb=>(mb/1024).toFixed(1);
    Reglas simples sobre el estado actual. La idea es que digan qué hacer,
    no solo que algo está mal.                                             */
 const PROGRAMAS={
-  claude:{nom:'Claude Code',cons:p=>'Tenés <b>'+p.p+'</b> sesiones abiertas ('+gb(p.m)+' GB). Cerrá las que no estés usando: cada una pesa ~600 MB.'},
-  comet:{nom:'Comet',cons:p=>'Comet con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB). Activá Memory Saver en <b>comet://settings/performance</b> para que descargue las pestañas que no mirás.'},
-  Code:{nom:'VS Code',cons:p=>'VS Code usando <b>'+gb(p.m)+' GB</b>. Cerrá las ventanas de proyectos que no estés tocando.'},
-  msedgewebview2:{nom:'WhatsApp',cons:p=>'WhatsApp Desktop y su motor web usan <b>'+gb(p.m)+' GB</b>. En una pestaña del navegador cuesta una fracción.'},
-  chrome:{nom:'Chrome',cons:p=>'Chrome con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB).'},
+  claude:{nom:'Claude Code',cons:p=>'<b>Claude Code</b> con <b>'+p.p+'</b> sesiones abiertas ('+gb(p.m)+' GB). Cerrá las que no estés usando: cada una pesa unos 600 MB.'},
+  comet:{nom:'Comet',cons:p=>'<b>Comet</b> con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB). Activá Memory Saver en <b>comet://settings/performance</b> para que descargue las pestañas que no mirás.'},
+  Code:{nom:'VS Code',cons:p=>'<b>VS Code</b> usando <b>'+gb(p.m)+' GB</b>. Cerrá las ventanas de proyectos que no estés tocando.'},
+  msedgewebview2:{nom:'WhatsApp',cons:p=>'<b>WhatsApp Desktop</b> y su motor web usan <b>'+gb(p.m)+' GB</b>. En una pestaña del navegador cuesta una fracción.'},
+  chrome:{nom:'Chrome',cons:p=>'<b>Chrome</b> con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB). Cerrá pestañas o activá el ahorro de memoria.'},
+  firefox:{nom:'Firefox',cons:p=>'<b>Firefox</b> con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB).'},
+  Discord:{nom:'Discord',cons:p=>'<b>Discord</b> usando <b>'+gb(p.m)+' GB</b> en segundo plano.'},
+  slack:{nom:'Slack',cons:p=>'<b>Slack</b> usando <b>'+gb(p.m)+' GB</b> en segundo plano.'},
 };
-const LIMITE={claude:2200,comet:2600,Code:2200,msedgewebview2:800,chrome:2000};
+const LIMITE={claude:2200,comet:2600,Code:2200,msedgewebview2:800,chrome:2000,firefox:2000,Discord:700,slack:700};
+
+// Cada consejo lleva una prioridad y la lista se ordena por ahi, para que lo
+// urgente quede arriba y no sepultado entre los informativos.
+//   3 = urgente (rojo)   2 = atencion (ambar)   1 = informativo   0 = todo ok
+const NIVEL={3:{n:'ro',i:'▲'},2:{n:'am',i:'●'},1:{n:'',i:'○'},0:{n:'',i:'✓'}};
 
 function recomendar(m){
   const r=[];
-  // 1) memoria
-  const ramUsoPct=100*(m.ramTotalMB-m.ramLibreMB)/m.ramTotalMB;
+  const add=(p,t)=>r.push({p:p,t:t});
+
+  // --- eléctrico y térmico: lo que puede tumbar la máquina va primero
+  if(m.v12!=null&&(m.v12<11.4||m.v12>12.6))
+    add(3,'<b>La línea de 12 V está en '+m.v12.toFixed(2)+' V</b>, fuera del rango ATX. Anotá qué estabas haciendo: esto es candidato directo a causar un reinicio.');
+  else if(m.v12!=null&&(m.v12<11.55||m.v12>12.45))
+    add(2,'<b>La línea de 12 V está en '+m.v12.toFixed(2)+' V</b>, cerca del borde del rango ATX.');
+
+  if(m.vrmTemp>90)
+    add(3,'<b>VRM de la placa en '+Math.round(m.vrmTemp)+' °C.</b> Esto sí es sospechoso de causar reinicios. Mejorá la ventilación sobre la zona del socket.');
+
+  if(m.potTotalW>FUENTE*0.83)
+    add(2,'<b>Consumo en '+m.potTotalW+' W</b> de '+FUENTE+'. Estás entrando en la zona donde la fuente trabaja exigida.');
+
+  if(m.cpuTemp>TMAXCPU)
+    add(3,'<b>Procesador en '+Math.round(m.cpuTemp)+' °C</b>, por encima de su tope de '+TMAXCPU+'. Está limitándose solo para no quemarse.');
+  else if(m.cpuTemp>TMAXCPU-4)
+    add(2,'<b>Procesador en '+Math.round(m.cpuTemp)+' °C</b>, cerca de su tope de '+TMAXCPU+'. Si se sostiene con los ventiladores del gabinete parados, revisá el flujo de aire.');
+
+  // --- memoria
   if(m.ramLibreMB<900)
-    r.push({n:'ro',i:'▲',t:'<b>Memoria casi agotada</b> — quedan '+gb(m.ramLibreMB)+' GB. Cerrá algo ya o Windows va a empezar a paginar a disco y todo se pone lento.'});
+    add(3,'<b>Memoria casi agotada</b> — quedan '+gb(m.ramLibreMB)+' GB. Cerrá algo ya o Windows va a empezar a paginar a disco y todo se pone lento.');
   else if(m.ramLibreMB<1800)
-    r.push({n:'am',i:'●',t:'<b>Memoria justa</b> — quedan '+gb(m.ramLibreMB)+' GB de 16. Buen momento para cerrar lo que no uses.'});
+    add(2,'<b>Memoria justa</b> — quedan '+gb(m.ramLibreMB)+' GB de '+gb(m.ramTotalMB)+'. Buen momento para cerrar lo que no uses.');
 
   if(m.commitPct>88)
-    r.push({n:'ro',i:'▲',t:'<b>Memoria comprometida al '+m.commitPct.toFixed(0)+'%</b>. Cuando llegue al tope los programas empiezan a fallar por falta de memoria.'});
+    add(3,'<b>Memoria comprometida al '+m.commitPct.toFixed(0)+' %</b>. Cuando llegue al tope los programas empiezan a fallar por falta de memoria.');
 
   if(m.pfUsoMB>3000)
-    r.push({n:'am',i:'●',t:'<b>Se está usando bastante paginación</b> ('+gb(m.pfUsoMB)+' GB). Es señal directa de que te falta RAM física.'});
+    add(2,'<b>Se está usando bastante paginación</b> ('+gb(m.pfUsoMB)+' GB). Es señal directa de que falta RAM física.');
 
-  // 2) programas concretos, si la memoria aprieta
+  // --- qué cerrar. Vienen ya ordenados de mayor a menor consumo.
   if(m.ramLibreMB<3500){
     (m.procesos||[]).forEach(p=>{
       const cfg=PROGRAMAS[p.n];
-      if(cfg && p.m>=(LIMITE[p.n]||99999)) r.push({n:'',i:'○',t:cfg.cons(p)});
+      if(cfg && p.m>=(LIMITE[p.n]||Infinity)) add(1,cfg.cons(p));
     });
   }
 
-  // 3) térmicas y eléctrico
-  if(m.cpuTemp>TMAXCPU-4) r.push({n:'am',i:'●',t:'<b>Procesador en '+Math.round(m.cpuTemp)+' °C</b>, cerca de su tope de '+TMAXCPU+'. Si se sostiene con los ventiladores del gabinete parados, revisá el flujo de aire.'});
-  if(m.vrmTemp>90) r.push({n:'ro',i:'▲',t:'<b>VRM de la placa en '+Math.round(m.vrmTemp)+' °C.</b> Esto sí es sospechoso de causar reinicios. Mejorá la ventilación sobre la zona del socket.'});
-  if(m.v12!=null&&(m.v12<11.5||m.v12>12.5)) r.push({n:'ro',i:'▲',t:'<b>La línea de 12 V está en '+m.v12.toFixed(2)+' V</b>, cerca del borde del rango ATX. Anotá qué estabas haciendo.'});
-  if(m.potTotalW>FUENTE*0.83) r.push({n:'am',i:'●',t:'<b>Consumo en '+m.potTotalW+' W</b> de '+FUENTE+'. Estás entrando en la zona donde la fuente trabaja exigida.'});
-
-  // 4) ventiladores del gabinete sin lectura
+  // --- informativo
   const sinLectura=(m.ventiladores||[]).filter(v=>!v.esGpu&&!/CPU/i.test(v.nombre)&&!v.rpm);
   if(sinLectura.length)
-    r.push({n:'',i:'○',t:'<b>'+sinLectura.length+' ventiladores del gabinete sin lectura.</b> Si giran, están en un hub o directo a la fuente: la placa no puede leerlos ni acelerarlos cuando sube la temperatura.'});
+    add(1,'<b>'+sinLectura.length+' ventiladores del gabinete sin lectura.</b> Si giran, están en un hub o directo a la fuente: la placa no puede leerlos ni acelerarlos cuando sube la temperatura.');
 
-  if(!r.length) r.push({n:'',i:'✓',t:'Todo en orden. Nada para cerrar ni revisar por ahora.'});
-  return r;
+  if(!r.length) add(0,'Todo en orden. Nada para cerrar ni revisar por ahora.');
+
+  // orden estable: prioridad descendente, y a igual prioridad se respeta el
+  // orden en que se agregaron (que ya es el de mayor a menor consumo)
+  return r.map((x,i)=>({x:x,i:i}))
+          .sort((a,b)=>(b.x.p-a.x.p)||(a.i-b.i))
+          .map(o=>({n:NIVEL[o.x.p].n, i:NIVEL[o.x.p].i, t:o.x.t}));
 }
 
 /* ---------------------------------------------------------------- pintar */
