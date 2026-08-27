@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitor del equipo</title>
+<style>
+/* Todo tiene que entrar en una pantalla, sin scroll. Por eso el body es una
+   grilla de altura fija y los paneles que pueden crecer (temperaturas,
+   registro) scrollean por dentro en vez de empujar la página.            */
+:root{
+  --fondo:#0d1117; --caja:#161b22; --borde:#26303d;
+  --txt:#e6edf3; --txt2:#9aa8b8; --txt3:#6b7a8c;
+  --verde:#3fb950; --amar:#e3b341; --rojo:#f85149; --azul:#58a6ff; --viol:#bc8cff;
+  --num:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--fondo); color:var(--txt); padding:18px 20px;
+  font:15px/1.4 "Segoe UI",system-ui,sans-serif; font-variant-numeric:tabular-nums;
+  min-height:100vh;
+  /* filas de alto natural: los paneles no se estiran a llenar la pantalla,
+     y lo que sobra queda como aire abajo en vez de huecos adentro          */
+  display:grid; grid-template-rows:repeat(5,auto); align-content:start; gap:14px;
+}
+
+/* encabezado ------------------------------------------------------------ */
+.top{display:flex;align-items:center;gap:14px}
+.top h1{font-size:18px;font-weight:600;white-space:nowrap}
+.eq{color:var(--txt2);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.der{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.reloj{color:var(--txt3);font-family:var(--num);font-size:13px}
+.est{display:inline-flex;align-items:center;gap:8px;padding:7px 15px;border-radius:8px;
+  font-size:14px;font-weight:600;border:1px solid currentColor;white-space:nowrap}
+.est i{width:9px;height:9px;border-radius:50%;background:currentColor}
+button{background:var(--caja);border:1px solid var(--borde);color:var(--txt);
+  font:600 13px "Segoe UI",system-ui,sans-serif;padding:8px 15px;border-radius:8px;cursor:pointer}
+button:hover{background:#1c2230;border-color:var(--azul)}
+button.listo{color:var(--verde);border-color:var(--verde)}
+
+/* grillas --------------------------------------------------------------- */
+.g{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g5{grid-template-columns:repeat(5,1fr)}
+.gb{grid-template-columns:1.15fr .8fr 1.05fr}
+.g2{grid-template-columns:1fr 1fr}
+@media(max-width:1150px){.g5{grid-template-columns:repeat(3,1fr)}.gb,.g2{grid-template-columns:1fr}}
+
+.caja{background:var(--caja);border:1px solid var(--borde);border-radius:12px;
+  padding:15px 17px;min-height:0;display:flex;flex-direction:column}
+.caja.mal{border-color:var(--rojo);background:#1a1213}
+.tit{font-size:15.5px;font-weight:600;line-height:1.2}
+.ayu{font-size:12.5px;color:var(--txt3);margin-bottom:8px;line-height:1.3}
+
+/* tarjeta con medidor --------------------------------------------------- */
+.pri{display:flex;align-items:center;gap:13px}
+.pri canvas{width:88px;height:88px;flex-shrink:0}
+.cif{font-family:var(--num);font-size:40px;font-weight:300;line-height:1}
+.cif small{font-size:15px;color:var(--txt3);margin-left:3px}
+.ext{font-size:13.5px;color:var(--txt2);margin-top:7px;line-height:1.5}
+.ext b{color:var(--txt);font-weight:600;font-family:var(--num)}
+
+/* tarjeta de carga ------------------------------------------------------ */
+.carga .cif{font-size:34px}
+.sub{font-size:13px;color:var(--txt2);margin-top:6px;line-height:1.45}
+.sub b{color:var(--txt);font-family:var(--num);font-weight:600}
+/* barra de dos tramos: usado + libre */
+.bar{height:8px;background:var(--borde);border-radius:4px;margin-top:8px;overflow:hidden;display:flex}
+.bar i{height:100%;transition:width .4s,background .4s}
+/* el gráfico se queda con lo que sobra, pero con tope: si no, en pantallas
+   altas se estira y deja el resto de la tarjeta desbalanceado */
+.graf{width:100%;flex:1;min-height:26px;max-height:62px;display:block;margin-top:7px}
+
+/* temperaturas en dos columnas.
+   align-content:start es lo que evita que las 16 filas se repartan por todo
+   el alto del panel dejando huecos enormes entre una y otra.              */
+.temps{display:grid;grid-template-columns:1fr 1fr;gap:0 20px;align-content:start;
+  overflow-y:auto;max-height:270px}
+.tf{display:grid;grid-template-columns:1fr auto 42px;align-items:center;gap:9px;
+  font-size:14px;padding:2.5px 0}
+.tf .nom{color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tf .val{font-family:var(--num);font-weight:600;font-size:14.5px;text-align:right}
+.tf .esc{height:5px;background:var(--borde);border-radius:3px;overflow:hidden}
+.tf .esc i{display:block;height:100%;border-radius:3px}
+
+/* ventiladores: compactos, en una fila que puede envolver --------------- */
+.vents{display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap;align-content:start}
+.vent{text-align:center;min-width:74px}
+.vent canvas{width:42px;height:42px;display:block;margin:0 auto}
+.vent .rpm{font-family:var(--num);font-size:14.5px;margin-top:2px;line-height:1.2}
+.vent .nom{font-size:12px;color:var(--txt3);line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vent .nota{font-size:10.5px;color:var(--txt3);font-style:italic;line-height:1.2}
+
+/* recomendaciones ------------------------------------------------------- */
+.recs{overflow-y:auto;max-height:300px;display:flex;flex-direction:column;gap:8px}
+.rec{display:flex;gap:9px;align-items:flex-start;font-size:13.5px;line-height:1.4;
+  padding:8px 11px;border-radius:7px;background:#11202e;border-left:3px solid var(--azul)}
+.rec.am{background:#1d1a0e;border-left-color:var(--amar)}
+.rec.ro{background:#20100f;border-left-color:var(--rojo)}
+.rec .ic{font-size:14px;line-height:1.1;flex-shrink:0}
+.rec b{color:var(--txt)}
+
+/* tablas y registro ----------------------------------------------------- */
+.scr{overflow-y:auto;max-height:300px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--txt3);font-weight:600;font-size:12px;padding:0 0 5px;
+  position:sticky;top:0;background:var(--caja)}
+td{padding:4px 0;border-top:1px solid var(--borde)}
+td.n{text-align:right;font-family:var(--num);color:var(--txt2)}
+.mb{display:inline-block;width:46px;height:5px;background:var(--borde);border-radius:3px;
+  vertical-align:middle;margin-left:8px}
+.mb i{display:block;height:100%;background:var(--azul);border-radius:3px}
+.reg div{display:flex;gap:10px;padding:3.5px 0;border-top:1px solid var(--borde);font-size:13px}
+.reg time{color:var(--txt3);font-family:var(--num);flex-shrink:0}
+.nada{color:var(--txt3);font-size:13.5px;padding:10px 0}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-thumb{background:var(--borde);border-radius:4px}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <h1>Monitor del equipo</h1>
+  <span class="eq" id="equipo">conectando…</span>
+  <span class="der">
+    <span class="reloj" id="reloj"></span>
+    <button id="copiar">Copiar informe</button>
+    <span class="est" id="est" style="color:var(--verde)"><i></i><span id="estTxt">Todo normal</span></span>
+  </span>
+</div>
+
+<!-- fila 1: diagnóstico eléctrico y térmico -->
+<div class="g g4">
+  <div class="caja" id="cV12"><div class="tit">Voltaje de la fuente</div>
+    <div class="ayu">Línea de +12 V · normal entre 11,40 y 12,60</div>
+    <div class="pri"><canvas id="gV12"></canvas><div>
+      <div class="cif" id="nV12">—</div><div class="ext" id="dV12"></div></div></div></div>
+
+  <div class="caja" id="cCT"><div class="tit">Temperatura del procesador</div>
+    <div class="ayu" id="ayuCT">Temperatura del núcleo</div>
+    <div class="pri"><canvas id="gCT"></canvas><div>
+      <div class="cif" id="nCT">—</div><div class="ext" id="dCT"></div></div></div></div>
+
+  <div class="caja" id="cVRM"><div class="tit">Temperatura de la placa</div>
+    <div class="ayu">Los VRM alimentan al CPU · sanos por debajo de 90 °C</div>
+    <div class="pri"><canvas id="gVRM"></canvas><div>
+      <div class="cif" id="nVRM">—</div><div class="ext" id="dVRM"></div></div></div></div>
+
+  <div class="caja" id="cW"><div class="tit">Consumo eléctrico</div>
+    <div class="ayu" id="ayuW">Estimado del equipo</div>
+    <div class="pri"><canvas id="gW"></canvas><div>
+      <div class="cif" id="nW">—</div><div class="ext" id="dW"></div></div></div></div>
+</div>
+
+<!-- fila 2: carga, con la memoria bien separada -->
+<div class="g g5">
+  <div class="caja carga"><div class="tit">Procesador</div><div class="ayu" id="ayuCPU">Uso del procesador</div>
+    <div class="cif" id="nCPU">—</div><div class="sub" id="dCPU"></div>
+    <div class="bar"><i id="bCPU"></i></div><canvas class="graf" id="grCPU"></canvas></div>
+
+  <div class="caja carga" id="cRAM"><div class="tit">Memoria RAM</div>
+    <div class="ayu">Física, sin contar la paginación</div>
+    <div class="cif" id="nRAM">—</div><div class="sub" id="dRAM"></div>
+    <div class="bar"><i id="bRAMu"></i><i id="bRAMl"></i></div>
+    <canvas class="graf" id="grRAM"></canvas></div>
+
+  <div class="caja carga" id="cPF"><div class="tit">Archivo de paginación</div>
+    <div class="ayu">El disco que Windows usa cuando falta RAM</div>
+    <div class="cif" id="nPF">—</div><div class="sub" id="dPF"></div>
+    <div class="bar"><i id="bPF"></i></div><canvas class="graf" id="grPF"></canvas></div>
+
+  <div class="caja carga"><div class="tit">Total comprometida</div>
+    <div class="ayu">RAM + paginación · el techo real del sistema</div>
+    <div class="cif" id="nCOM">—</div><div class="sub" id="dCOM"></div>
+    <div class="bar"><i id="bCOM"></i></div><canvas class="graf" id="grCOM"></canvas></div>
+
+  <div class="caja carga"><div class="tit">Placa de video</div><div class="ayu" id="ayuGPU">Uso de la placa de video</div>
+    <div class="cif" id="nGPU">—</div><div class="sub" id="dGPU"></div>
+    <div class="bar"><i id="bGPU"></i></div><canvas class="graf" id="grGPU"></canvas></div>
+</div>
+
+<!-- fila 3: temperaturas, ventiladores, procesos -->
+<div class="g gb">
+  <div class="caja"><div class="tit">Todas las temperaturas</div>
+    <div class="ayu">Sensores reales de la placa, el procesador y los discos</div>
+    <div class="temps" id="temps"><div class="nada">requiere LibreHardwareMonitor</div></div></div>
+
+  <div class="caja"><div class="tit">Ventiladores</div>
+    <div class="ayu">Los que no están enchufados a la placa no reportan vueltas</div>
+    <div class="vents" id="vents"><div class="nada">requiere LibreHardwareMonitor</div></div></div>
+
+  <div class="caja"><div class="tit">Memoria por programa</div>
+    <div class="ayu">Privada, sin contar lo que comparten entre procesos</div>
+    <div class="scr"><table><thead><tr><th>Programa</th><th style="text-align:right">Proc</th>
+      <th style="text-align:right">MB</th><th></th></tr></thead><tbody id="procs"></tbody></table></div></div>
+</div>
+
+<!-- fila 4: recomendaciones e incidentes, cada una en su panel -->
+<div class="g g2">
+  <div class="caja"><div class="tit">Recomendaciones</div>
+    <div class="ayu">Qué conviene cerrar o revisar ahora mismo</div>
+    <div class="recs" id="recs"></div></div>
+
+  <div class="caja"><div class="tit">Incidentes</div>
+    <div class="ayu">Solo se anota si el problema se sostiene varias muestras seguidas</div>
+    <div class="scr reg" id="reg"><div class="nada">Ninguno en esta sesión</div></div></div>
+</div>
+
+<script>
+'use strict';
+const $=i=>document.getElementById(i);
+const H=180, S={}, R=window.devicePixelRatio||1;
+let ultima=null, equipo=null, corte=null;
+const registro=[];
+/* Nada de esto está cableado: la potencia de la fuente sale de config.json
+   (es lo único que ningún sensor puede reportar) y el resto se detecta.  */
+let FUENTE=750, TMAXCPU=92, TMAXGPU=83;
+function aplicarConfig(info){
+  if(!info) return;
+  const c=info.cfg||{}, u=c.umbrales||{};
+  if(c.fuenteW) FUENTE=c.fuenteW;
+  if(u.cpuTempMax) TMAXCPU=u.cpuTempMax;
+  if(u.gpuTempMax) TMAXGPU=u.gpuTempMax;
+  E.cpuT=[[45,C.verde],[TMAXCPU-18,C.verde],[TMAXCPU-6,C.amar],[TMAXCPU+3,C.rojo]];
+  E.watts=[[100,C.verde],[FUENTE*0.57,C.verde],[FUENTE*0.8,C.amar],[FUENTE*0.96,C.rojo]];
+  // textos de ayuda armados con lo detectado, no escritos a mano
+  $('ayuCT').textContent='Temperatura del núcleo · su tope de diseño son '+TMAXCPU+' °C';
+  $('ayuW').textContent='Estimado del equipo · la fuente da '+FUENTE+' W';
+  if(info.hilos) $('ayuCPU').textContent='Uso de los '+info.hilos+' hilos';
+  if(info.gpuNombre) $('ayuGPU').textContent='Uso de la '+info.gpuNombre.replace(/^NVIDIA GeForce /,'');
+  if(info.ramTotalMB) $('cRAM').querySelector('.ayu').textContent=
+    'Física, sin contar la paginación · '+(info.ramTotalMB/1024).toFixed(0)+' GB instalados';
+}
+const C={verde:'#3fb950',amar:'#e3b341',rojo:'#f85149',azul:'#58a6ff',viol:'#bc8cff',borde:'#26303d',gris:'#6b7a8c'};
+
+/* color ----------------------------------------------------------------- */
+const rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mez=(a,b,t)=>{const A=rgb(a),B=rgb(b);
+  return 'rgb('+A.map((v,i)=>Math.round(v+(B[i]-v)*t)).join(',')+')';};
+// acepta '#rrggbb' o 'rgb(r,g,b)' y devuelve rgba con el alfa pedido
+function conAlfa(c,a){
+  if(c.startsWith('#')) return 'rgba('+rgb(c).join(',')+','+a+')';
+  const n=c.match(/[\d.]+/g);
+  return n&&n.length>=3 ? 'rgba('+n[0]+','+n[1]+','+n[2]+','+a+')' : c;
+}
+function escala(v,ps){
+  if(v==null||isNaN(v)) return C.gris;
+  if(v<=ps[0][0]) return ps[0][1];
+  if(v>=ps[ps.length-1][0]) return ps[ps.length-1][1];
+  for(let i=0;i<ps.length-1;i++)
+    if(v>=ps[i][0]&&v<=ps[i+1][0]) return mez(ps[i][1],ps[i+1][1],(v-ps[i][0])/(ps[i+1][0]-ps[i][0]));
+  return ps[ps.length-1][1];
+}
+const E={
+  cpuT:[[45,C.verde],[75,C.verde],[86,C.amar],[95,C.rojo]],
+  vrmT:[[40,C.verde],[75,C.verde],[92,C.amar],[105,C.rojo]],
+  disco:[[25,C.verde],[50,C.verde],[62,C.amar],[72,C.rojo]],
+  watts:[[100,C.verde],[430,C.verde],[600,C.amar],[720,C.rojo]],
+  cpu:[[0,C.verde],[65,C.verde],[90,C.amar],[100,C.rojo]],
+  com:[[0,C.verde],[70,C.verde],[88,C.amar],[97,C.rojo]],
+  ramUso:[[0,C.verde],[70,C.verde],[88,C.amar],[97,C.rojo]],
+  pf:[[0,C.verde],[45,C.verde],[70,C.amar],[90,C.rojo]],
+};
+const colV12=v=>v==null?C.gris:escala(Math.abs(v-12),[[0,C.verde],[.25,C.verde],[.45,C.amar],[.62,C.rojo]]);
+const push=(k,v)=>{if(v==null||isNaN(v))return;(S[k]=S[k]||[]).push(v);if(S[k].length>H)S[k].shift();};
+
+/* medidores ------------------------------------------------------------- */
+function medidor(id,val,min,max,color,marcas){
+  const c=$(id); if(!c) return; const L=88;
+  if(c.width!==L*R){c.width=L*R;c.height=L*R;}
+  const x=c.getContext('2d'); x.setTransform(R,0,0,R,0,0); x.clearRect(0,0,L,L);
+  const cx=L/2,cy=L/2,r=33,a0=Math.PI*.75,a1=Math.PI*2.25;
+  x.lineCap='round';
+  x.beginPath();x.arc(cx,cy,r,a0,a1);x.strokeStyle=C.borde;x.lineWidth=8;x.stroke();
+  (marcas||[]).forEach(mk=>{
+    const t=(mk.v-min)/(max-min); if(t<0||t>1)return;
+    const a=a0+(a1-a0)*t; x.lineCap='butt';
+    x.beginPath();x.arc(cx,cy,r+7,a-.025,a+.025);x.strokeStyle=mk.c;x.lineWidth=5;x.stroke();
+    x.lineCap='round';
+  });
+  if(val==null||isNaN(val))return;
+  const t=Math.max(0,Math.min(1,(val-min)/(max-min)));
+  x.beginPath();x.arc(cx,cy,r,a0,a0+(a1-a0)*t);x.strokeStyle=color;x.lineWidth=8;x.stroke();
+}
+function medVent(cv,rpm,max){
+  const L=50; if(cv.width!==L*R){cv.width=L*R;cv.height=L*R;}
+  const x=cv.getContext('2d');x.setTransform(R,0,0,R,0,0);x.clearRect(0,0,L,L);
+  const cx=L/2,cy=L/2,r=18,a0=Math.PI*.75,a1=Math.PI*2.25;
+  x.lineCap='round';
+  x.beginPath();x.arc(cx,cy,r,a0,a1);x.strokeStyle=C.borde;x.lineWidth=5;x.stroke();
+  if(!rpm)return;
+  x.beginPath();x.arc(cx,cy,r,a0,a0+(a1-a0)*Math.min(1,rpm/max));
+  x.strokeStyle=C.azul;x.lineWidth=5;x.stroke();
+}
+
+/* gráfico --------------------------------------------------------------- */
+function grafico(id,k,color,min,max,uni){
+  const c=$(id); if(!c) return; const d=S[k]; if(!d||d.length<2) return;
+  const w=c.clientWidth,h=c.clientHeight; if(!w||!h) return;
+  if(c.width!==w*R){c.width=w*R;c.height=h*R;}
+  const x=c.getContext('2d');x.setTransform(R,0,0,R,0,0);x.clearRect(0,0,w,h);
+  let lo=min!=null?min:Math.min.apply(null,d), hi=max!=null?max:Math.max.apply(null,d);
+  if(hi-lo<1) hi=lo+1;
+  // pad deja libre la franja izquierda donde van las etiquetas de escala
+  const pad=26,gw=w-pad,rg=hi-lo,px=i=>pad+(i/(H-1))*gw,py=v=>h-3-((v-lo)/rg)*(h-9);
+  x.strokeStyle=C.borde;x.lineWidth=1;x.setLineDash([3,4]);
+  const ym=py(lo+rg*.5);x.beginPath();x.moveTo(pad,ym);x.lineTo(w,ym);x.stroke();
+  x.setLineDash([]);
+  x.beginPath();x.moveTo(px(H-d.length),h);
+  d.forEach((v,i)=>x.lineTo(px(H-d.length+i),py(v)));
+  x.lineTo(px(H-1),h);x.closePath();
+  const g=x.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,conAlfa(color,.28)); g.addColorStop(1,conAlfa(color,0));
+  x.fillStyle=g;x.fill();
+  x.beginPath();
+  d.forEach((v,i)=>i?x.lineTo(px(H-d.length+i),py(v)):x.moveTo(px(H-d.length),py(v)));
+  x.strokeStyle=color;x.lineWidth=1.8;x.lineJoin='round';x.stroke();
+  // referencias de escala: tienen que leerse, por eso 11px y no 9
+  x.fillStyle='#8a9aab';x.font='11px ui-monospace,monospace';x.textAlign='left';
+  x.fillText(fmt(hi)+(uni||''),1,10); x.fillText(fmt(lo)+(uni||''),1,h-2);
+}
+const fmt=v=>Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':(Number.isInteger(v)?v:v.toFixed(0));
+const barra=(id,pct,col)=>{const e=$(id);if(e){e.style.width=Math.max(0,Math.min(100,pct))+'%';e.style.background=col;}};
+const hora=ts=>new Date(ts).toLocaleTimeString('es-AR',{hour12:false});
+const gb=mb=>(mb/1024).toFixed(1);
+
+/* ------------------------------------------------------- recomendaciones
+   Reglas simples sobre el estado actual. La idea es que digan qué hacer,
+   no solo que algo está mal.                                             */
+const PROGRAMAS={
+  claude:{nom:'Claude Code',cons:p=>'Tenés <b>'+p.p+'</b> sesiones abiertas ('+gb(p.m)+' GB). Cerrá las que no estés usando: cada una pesa ~600 MB.'},
+  comet:{nom:'Comet',cons:p=>'Comet con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB). Activá Memory Saver en <b>comet://settings/performance</b> para que descargue las pestañas que no mirás.'},
+  Code:{nom:'VS Code',cons:p=>'VS Code usando <b>'+gb(p.m)+' GB</b>. Cerrá las ventanas de proyectos que no estés tocando.'},
+  msedgewebview2:{nom:'WhatsApp',cons:p=>'WhatsApp Desktop y su motor web usan <b>'+gb(p.m)+' GB</b>. En una pestaña del navegador cuesta una fracción.'},
+  chrome:{nom:'Chrome',cons:p=>'Chrome con <b>'+p.p+'</b> procesos ('+gb(p.m)+' GB).'},
+};
+const LIMITE={claude:2200,comet:2600,Code:2200,msedgewebview2:800,chrome:2000};
+
+function recomendar(m){
+  const r=[];
+  // 1) memoria
+  const ramUsoPct=100*(m.ramTotalMB-m.ramLibreMB)/m.ramTotalMB;
+  if(m.ramLibreMB<900)
+    r.push({n:'ro',i:'▲',t:'<b>Memoria casi agotada</b> — quedan '+gb(m.ramLibreMB)+' GB. Cerrá algo ya o Windows va a empezar a paginar a disco y todo se pone lento.'});
+  else if(m.ramLibreMB<1800)
+    r.push({n:'am',i:'●',t:'<b>Memoria justa</b> — quedan '+gb(m.ramLibreMB)+' GB de 16. Buen momento para cerrar lo que no uses.'});
+
+  if(m.commitPct>88)
+    r.push({n:'ro',i:'▲',t:'<b>Memoria comprometida al '+m.commitPct.toFixed(0)+'%</b>. Cuando llegue al tope los programas empiezan a fallar por falta de memoria.'});
+
+  if(m.pfUsoMB>3000)
+    r.push({n:'am',i:'●',t:'<b>Se está usando bastante paginación</b> ('+gb(m.pfUsoMB)+' GB). Es señal directa de que te falta RAM física.'});
+
+  // 2) programas concretos, si la memoria aprieta
+  if(m.ramLibreMB<3500){
+    (m.procesos||[]).forEach(p=>{
+      const cfg=PROGRAMAS[p.n];
+      if(cfg && p.m>=(LIMITE[p.n]||99999)) r.push({n:'',i:'○',t:cfg.cons(p)});
+    });
+  }
+
+  // 3) térmicas y eléctrico
+  if(m.cpuTemp>TMAXCPU-4) r.push({n:'am',i:'●',t:'<b>Procesador en '+Math.round(m.cpuTemp)+' °C</b>, cerca de su tope de '+TMAXCPU+'. Si se sostiene con los ventiladores del gabinete parados, revisá el flujo de aire.'});
+  if(m.vrmTemp>90) r.push({n:'ro',i:'▲',t:'<b>VRM de la placa en '+Math.round(m.vrmTemp)+' °C.</b> Esto sí es sospechoso de causar reinicios. Mejorá la ventilación sobre la zona del socket.'});
+  if(m.v12!=null&&(m.v12<11.5||m.v12>12.5)) r.push({n:'ro',i:'▲',t:'<b>La línea de 12 V está en '+m.v12.toFixed(2)+' V</b>, cerca del borde del rango ATX. Anotá qué estabas haciendo.'});
+  if(m.potTotalW>FUENTE*0.83) r.push({n:'am',i:'●',t:'<b>Consumo en '+m.potTotalW+' W</b> de '+FUENTE+'. Estás entrando en la zona donde la fuente trabaja exigida.'});
+
+  // 4) ventiladores del gabinete sin lectura
+  const sinLectura=(m.ventiladores||[]).filter(v=>!v.esGpu&&!/CPU/i.test(v.nombre)&&!v.rpm);
+  if(sinLectura.length)
+    r.push({n:'',i:'○',t:'<b>'+sinLectura.length+' ventiladores del gabinete sin lectura.</b> Si giran, están en un hub o directo a la fuente: la placa no puede leerlos ni acelerarlos cuando sube la temperatura.'});
+
+  if(!r.length) r.push({n:'',i:'✓',t:'Todo en orden. Nada para cerrar ni revisar por ahora.'});
+  return r;
+}
+
+/* ---------------------------------------------------------------- pintar */
+function pintar(m){
+  ultima=m;
+  if(equipo) $('equipo').textContent=equipo.cpu.replace(' 8-Core Processor','')+
+    ' · '+equipo.nucleos+' núcleos / '+equipo.hilos+' hilos · '+(equipo.ramTotalMB/1024).toFixed(0)+' GB';
+
+  // fila 1
+  const cv=colV12(m.v12);
+  medidor('gV12',m.v12,11,13,cv,[{v:11.4,c:C.rojo},{v:12.6,c:C.rojo}]);
+  $('nV12').innerHTML=m.v12!=null?'<span style="color:'+cv+'">'+m.v12.toFixed(2)+'</span><small>V</small>':'—';
+  $('dV12').innerHTML=m.v12!=null?'Línea 5 V: <b>'+(m.v5!=null?m.v5.toFixed(2):'—')+'</b><br>'+
+    'Línea 3,3 V: <b>'+(m.v33!=null?m.v33.toFixed(2):'—')+'</b><br>'+
+    'Al CPU: <b>'+(m.cpuVcore!=null?m.cpuVcore.toFixed(3):'—')+'</b>':'Necesita LibreHardwareMonitor';
+  push('v12',m.v12); $('cV12').classList.toggle('mal',m.v12!=null&&(m.v12<11.4||m.v12>12.6));
+
+  const cc=escala(m.cpuTemp,E.cpuT);
+  medidor('gCT',m.cpuTemp,25,100,cc,[{v:90,c:C.amar}]);
+  $('nCT').innerHTML=m.cpuTemp!=null?'<span style="color:'+cc+'">'+Math.round(m.cpuTemp)+'</span><small>°C</small>':'—';
+  $('dCT').innerHTML=m.cpuTemp!=null?'Consumo: <b>'+(m.cpuPotW!=null?Math.round(m.cpuPotW):'—')+'</b> W<br>'+
+    'Frecuencia: <b>'+(m.cpuClockMHz?Math.round(m.cpuClockMHz):'—')+'</b> MHz<br>'+
+    'Ventilador: <b>'+(ventCpu(m)||'—')+'</b> rpm':'Necesita LibreHardwareMonitor';
+  push('ct',m.cpuTemp); $('cCT').classList.toggle('mal',m.cpuTemp>93);
+
+  const cvr=escala(m.vrmTemp,E.vrmT);
+  medidor('gVRM',m.vrmTemp,25,120,cvr,[{v:95,c:C.amar},{v:105,c:C.rojo}]);
+  $('nVRM').innerHTML=m.vrmTemp!=null?'<span style="color:'+cvr+'">'+Math.round(m.vrmTemp)+'</span><small>°C</small>':'—';
+  $('dVRM').innerHTML=m.vrmTemp!=null?'VRM del SoC: <b>'+(m.vsocTemp!=null?Math.round(m.vsocTemp):'—')+'</b> °C<br>'+
+    'Chipset: <b>'+(m.chipsetTemp!=null?Math.round(m.chipsetTemp):'—')+'</b> °C<br>'+
+    'Gabinete: <b>'+(m.mbTemp!=null?Math.round(m.mbTemp):'—')+'</b> °C':'Necesita LibreHardwareMonitor';
+  push('vrm',m.vrmTemp); $('cVRM').classList.toggle('mal',m.vrmTemp>102);
+
+  const cw=escala(m.potTotalW,E.watts);
+  medidor('gW',m.potTotalW,0,FUENTE,cw,[{v:FUENTE*0.8,c:C.amar},{v:FUENTE*0.96,c:C.rojo}]);
+  $('nW').innerHTML=m.potTotalW!=null?'<span style="color:'+cw+'">'+m.potTotalW+'</span><small>W</small>':'—';
+  $('dW').innerHTML=m.potTotalW!=null?'CPU: <b>'+(m.cpuPotW!=null?Math.round(m.cpuPotW):'—')+'</b> W<br>'+
+    'Video: <b>'+(m.gpuPotW!=null?Math.round(m.gpuPotW):'—')+'</b> W<br>'+
+    'Margen: <b>'+(FUENTE-m.potTotalW)+'</b> W':'';
+  push('w',m.potTotalW); $('cW').classList.toggle('mal',m.potTotalW>700);
+
+  // fila 2 -- procesador
+  if(m.cpuPct!=null){
+    const c=escala(m.cpuPct,E.cpu);
+    $('nCPU').innerHTML='<span style="color:'+c+'">'+m.cpuPct+'</span><small>%</small>';
+    $('dCPU').innerHTML='<b>'+(m.nProcesos||'—')+'</b> procesos activos';
+    barra('bCPU',m.cpuPct,c); push('cpu',m.cpuPct); grafico('grCPU','cpu',c,0,100,'%');
+  }
+
+  // memoria RAM: en uso y disponible, bien separados
+  const usadaMB=m.ramTotalMB-m.ramLibreMB, usoPct=100*usadaMB/m.ramTotalMB;
+  const cru=escala(usoPct,E.ramUso);
+  $('nRAM').innerHTML='<span style="color:'+cru+'">'+usoPct.toFixed(0)+'</span><small>% en uso</small>';
+  $('dRAM').innerHTML='En uso: <b>'+gb(usadaMB)+'</b> GB · Libres: <b>'+gb(m.ramLibreMB)+'</b> GB<br>'+
+    'Total instalada: <b>'+gb(m.ramTotalMB)+'</b> GB';
+  barra('bRAMu',usoPct,cru); barra('bRAMl',100-usoPct,C.borde);
+  push('ramUso',usoPct); grafico('grRAM','ramUso',cru,0,100,'%');
+  $('cRAM').classList.toggle('mal',m.ramLibreMB<900);
+
+  // paginación aparte
+  const pfTot=m.pfTotalMB||0, pfPct=pfTot?100*m.pfUsoMB/pfTot:0;
+  const cpf=escala(pfPct,E.pf);
+  $('nPF').innerHTML='<span style="color:'+cpf+'">'+gb(m.pfUsoMB)+'</span><small>GB en uso</small>';
+  $('dPF').innerHTML='Pico de la sesión: <b>'+gb(m.pfPicoMB)+'</b> GB'+
+    (pfTot?'<br>Tamaño del archivo: <b>'+gb(pfTot)+'</b> GB':'');
+  barra('bPF',pfPct,cpf); push('pf',m.pfUsoMB); grafico('grPF','pf',cpf,0,undefined,'MB');
+
+  const cm=escala(m.commitPct,E.com);
+  $('nCOM').innerHTML='<span style="color:'+cm+'">'+m.commitPct.toFixed(0)+'</span><small>%</small>';
+  $('dCOM').innerHTML='<b>'+gb(m.commitMB)+'</b> de <b>'+gb(m.commitTopeMB)+'</b> GB<br>'+
+    'Disponible: <b>'+gb(m.commitTopeMB-m.commitMB)+'</b> GB';
+  barra('bCOM',m.commitPct,cm); push('com',m.commitPct); grafico('grCOM','com',cm,0,100,'%');
+
+  if(m.gpuUsoPct!=null){
+    $('nGPU').innerHTML='<span style="color:'+C.viol+'">'+m.gpuUsoPct+'</span><small>%</small>';
+    $('dGPU').innerHTML='<b>'+Math.round(m.gpuTemp)+'</b> °C · <b>'+Math.round(m.gpuPotW)+'</b> W<br>'+
+      'Video: <b>'+gb(m.gpuVramMB)+'</b> de '+(m.gpuVramTotMB/1024).toFixed(0)+' GB';
+    barra('bGPU',m.gpuUsoPct,C.viol); push('gpu',m.gpuUsoPct); grafico('grGPU','gpu',C.viol,0,100,'%');
+  }
+
+  // temperaturas
+  if(m.temps&&m.temps.length){
+    const mx=Math.max(100,...m.temps.map(t=>t.t));
+    $('temps').innerHTML=m.temps.map(t=>{
+      const col=escala(t.t,/kingston|st\d|wdc|seagate|ssd|nvme/i.test(t.n)?E.disco:(/vrm/i.test(t.n)?E.vrmT:E.cpuT));
+      return '<div class="tf"><span class="nom" title="'+t.n+'">'+t.n+'</span>'+
+        '<span class="val" style="color:'+col+'">'+t.t.toFixed(0)+'°</span>'+
+        '<span class="esc"><i style="width:'+(100*t.t/mx)+'%;background:'+col+'"></i></span></div>';
+    }).join('');
+  }
+
+  // ventiladores
+  if(m.ventiladores&&m.ventiladores.length){
+    const cont=$('vents');
+    if(cont.dataset.n!==String(m.ventiladores.length)){
+      cont.dataset.n=String(m.ventiladores.length);
+      cont.innerHTML=m.ventiladores.map((v,i)=>{
+        const nom=v.nombre.replace(/^CPU Fan$/i,'Procesador')
+          .replace(/^System Fan #?(\d)$/i,'Gabinete $1').replace(/^GPU Fan ?(\d)$/i,'Video $1');
+        return '<div class="vent"><canvas id="v'+i+'"></canvas><div class="rpm" id="vr'+i+'"></div>'+
+          '<div class="nom">'+nom+'</div><div class="nota" id="vn'+i+'"></div></div>';
+      }).join('');
+    }
+    m.ventiladores.forEach((v,i)=>{
+      const c=$('v'+i); if(c) medVent(c,v.rpm,m.rpmMaximo||1600);
+      const r=$('vr'+i), n=$('vn'+i);
+      if(r){r.textContent=v.rpm||'0'; r.style.color=v.rpm?C.azul:C.gris;}
+      // 0 rpm no prueba que esté parado: puede no estar enchufado a la placa
+      if(n) n.textContent=v.rpm?'':(v.esGpu?'modo silencioso':'sin lectura');
+    });
+  }
+
+  // recomendaciones
+  $('recs').innerHTML=recomendar(m).map(r=>
+    '<div class="rec '+r.n+'"><span class="ic">'+r.i+'</span><span>'+r.t+'</span></div>').join('');
+
+  // procesos
+  const mx2=(m.procesos&&m.procesos[0])?m.procesos[0].m:1;
+  $('procs').innerHTML=(m.procesos||[]).map(p=>
+    '<tr><td>'+p.n+'</td><td class="n">'+p.p+'</td><td class="n">'+p.m+
+    '</td><td style="width:58px"><span class="mb"><i style="width:'+(100*p.m/mx2)+'%"></i></span></td></tr>').join('');
+
+  // estado
+  const e=$('est');
+  if(m.alerta&&m.alerta.length){e.style.color=C.rojo;$('estTxt').textContent=m.alerta[0];m.alerta.forEach(a=>anotar(m.ts,a));}
+  else {e.style.color=C.verde;$('estTxt').textContent='Todo normal';}
+}
+
+const ventCpu=m=>{const v=(m.ventiladores||[]).find(f=>/CPU/i.test(f.nombre));return v?v.rpm:null;};
+function anotar(ts,msg){
+  const k=ts+msg; if(registro.some(r=>r.k===k))return;
+  registro.push({k:k,ts:ts,msg:msg}); if(registro.length>150)registro.shift();
+  $('reg').innerHTML=registro.slice().reverse().map(r=>
+    '<div><time>'+hora(r.ts)+'</time><span style="color:var(--rojo)">'+r.msg+'</span></div>').join('');
+}
+
+/* informe --------------------------------------------------------------- */
+function res(k,d){const v=(S[k]||[]).filter(x=>x!=null); if(!v.length)return 'sin datos';
+  return 'mín '+Math.min.apply(null,v).toFixed(d)+' · prom '+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(d)+
+    ' · máx '+Math.max.apply(null,v).toFixed(d);}
+function informe(){
+  const m=ultima; if(!m)return 'Sin datos todavía.';
+  const L=['=== INFORME DEL MONITOR · '+new Date().toLocaleString('es-AR')+' ===',''];
+  if(equipo){L.push('EQUIPO','  '+equipo.cpu+'  ('+equipo.nucleos+'C/'+equipo.hilos+'T)',
+    '  RAM '+gb(equipo.ramTotalMB)+' GB · '+equipo.so,
+    '  Encendido desde '+new Date(equipo.arranque).toLocaleString('es-AR'),'');}
+  L.push('AHORA MISMO');
+  L.push('  Procesador     '+m.cpuPct+' %   '+(m.cpuTemp!=null?Math.round(m.cpuTemp)+' °C':'—')+
+    '   '+(m.cpuPotW!=null?Math.round(m.cpuPotW)+' W':'—')+'   '+(m.cpuClockMHz?Math.round(m.cpuClockMHz)+' MHz':'—'));
+  L.push('  Placa video    '+(m.gpuUsoPct!=null?m.gpuUsoPct+' %':'—')+'   '+(m.gpuTemp!=null?Math.round(m.gpuTemp)+' °C':'—')+
+    '   '+(m.gpuPotW!=null?Math.round(m.gpuPotW)+' / '+Math.round(m.gpuPotMaxW)+' W':'—')+
+    (m.gpuHotspot!=null?'   hotspot '+Math.round(m.gpuHotspot)+' °C':''));
+  L.push('');
+  L.push('MEMORIA');
+  L.push('  RAM en uso     '+gb(m.ramTotalMB-m.ramLibreMB)+' GB  ('+(100*(m.ramTotalMB-m.ramLibreMB)/m.ramTotalMB).toFixed(0)+' %)');
+  L.push('  RAM libre      '+gb(m.ramLibreMB)+' GB de '+gb(m.ramTotalMB)+' GB');
+  L.push('  Paginación     '+gb(m.pfUsoMB)+' GB en uso · pico '+gb(m.pfPicoMB)+' GB'+(m.pfTotalMB?' · tamaño '+gb(m.pfTotalMB)+' GB':''));
+  L.push('  Comprometida   '+gb(m.commitMB)+' / '+gb(m.commitTopeMB)+' GB  ('+m.commitPct+' %)');
+  L.push('  Disco          lee '+m.discoLeeMB+' · escribe '+m.discoEscMB+' MB/s');
+  L.push('  Red            '+m.redMbps+' Mbps');
+  L.push('  Consumo        '+(m.potTotalW!=null?m.potTotalW+' W de '+FUENTE+' W':'—'),'');
+  L.push('ALIMENTACION');
+  L.push('  +12V   '+(m.v12!=null?m.v12.toFixed(3)+' V'+((m.v12<11.4||m.v12>12.6)?'   *** FUERA DE RANGO ATX ***':'   (ok)'):'sin lectura'));
+  L.push('  +5V    '+(m.v5!=null?m.v5.toFixed(3)+' V':'sin lectura'));
+  L.push('  +3.3V  '+(m.v33!=null?m.v33.toFixed(3)+' V':'sin lectura'));
+  L.push('  Vcore  '+(m.cpuVcore!=null?m.cpuVcore.toFixed(3)+' V':'sin lectura'),'');
+  L.push('RANGOS DE LA VENTANA ('+(((S.cpu||[]).length*2)/60).toFixed(0)+' min aprox)');
+  L.push('  Procesador %   '+res('cpu',0));
+  L.push('  Temp CPU °C    '+res('ct',0));
+  L.push('  Temp VRM °C    '+res('vrm',0));
+  L.push('  Consumo W      '+res('w',0));
+  L.push('  RAM en uso %   '+res('ramUso',0));
+  L.push('  Paginación MB  '+res('pf',0));
+  L.push('  Comprometida % '+res('com',1));
+  L.push('  +12V           '+res('v12',3),'');
+  if(m.ventiladores&&m.ventiladores.length){
+    L.push('VENTILADORES');
+    m.ventiladores.forEach(v=>L.push('  '+v.nombre.padEnd(18)+String(v.rpm).padStart(5)+' rpm'+
+      (v.rpm?'':(v.esGpu?'   (modo silencioso, normal en reposo)':'   (sin lectura: puede no estar en la placa)'))));
+    L.push('');
+  }
+  if(m.temps&&m.temps.length){L.push('TEMPERATURAS');
+    m.temps.forEach(t=>L.push('  '+t.n.padEnd(26)+String(t.t).padStart(6)+' °C')); L.push('');}
+  L.push('MEMORIA POR PROGRAMA');
+  (m.procesos||[]).forEach(p=>L.push('  '+p.n.padEnd(22)+String(p.p).padStart(3)+' proc  '+String(p.m).padStart(6)+' MB'));
+  L.push('');
+  L.push('RECOMENDACIONES');
+  recomendar(m).forEach(r=>L.push('  - '+r.t.replace(/<[^>]+>/g,'')));
+  L.push('');
+  if(corte){
+    L.push('*** LA SESION ANTERIOR SE CORTO DE GOLPE ***');
+    L.push('  Última muestra: '+(corte.ultimaMuestra?new Date(corte.ultimaMuestra).toLocaleString('es-AR'):'?'));
+    L.push('  hora       CPU%  RAMlib  comm%  Tcpu  Tvrm  Tgpu   GPUw  totW    +12V');
+    (corte.previas||[]).forEach(p=>{const c=(v,d)=>v==null?'—':Number(v).toFixed(d||0);
+      L.push('  '+new Date(p.ts).toLocaleTimeString('es-AR',{hour12:false})+'  '+c(p.cpuPct).padStart(4)+'  '+
+        c(p.ramLibreMB).padStart(6)+'  '+c(p.commitPct,1).padStart(5)+'  '+c(p.cpuTemp).padStart(4)+'  '+
+        c(p.vrmTemp).padStart(4)+'  '+c(p.gpuTemp).padStart(4)+'  '+c(p.gpuPotW).padStart(5)+'  '+
+        c(p.potTotalW).padStart(4)+'  '+c(p.v12,3).padStart(6));});
+    L.push('');
+  }
+  L.push(registro.length?'INCIDENTES ('+registro.length+')':'INCIDENTES: ninguno');
+  registro.slice(-30).forEach(r=>L.push('  '+hora(r.ts)+'  '+r.msg));
+  return L.join('\n');
+}
+$('copiar').onclick=async()=>{
+  const b=$('copiar'),t=informe();
+  try{await navigator.clipboard.writeText(t);}
+  catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();}
+  b.textContent='Copiado';b.classList.add('listo');
+  setTimeout(()=>{b.textContent='Copiar informe';b.classList.remove('listo');},1800);
+};
+
+/* stream ---------------------------------------------------------------- */
+const es=new EventSource('/api/stream');
+es.onmessage=ev=>{
+  const d=JSON.parse(ev.data);
+  if(d.info){ const primero=!equipo; equipo=d.info; if(primero||!$('ayuW').dataset.ok){
+    aplicarConfig(equipo); $('ayuW').dataset.ok='1'; } }
+  if(d.historial){
+    d.historial.forEach(m=>{
+      push('cpu',m.cpuPct); push('com',m.commitPct); push('ct',m.cpuTemp);
+      push('vrm',m.vrmTemp); push('gpu',m.gpuUsoPct); push('w',m.potTotalW);
+      push('v12',m.v12); push('pf',m.pfUsoMB);
+      if(m.ramTotalMB) push('ramUso',100*(m.ramTotalMB-m.ramLibreMB)/m.ramTotalMB);
+    });
+    (d.eventos||[]).forEach(e=>(e.alertas||[]).forEach(a=>anotar(e.ts,a.msg)));
+    if(d.corteAnterior) corte=d.corteAnterior;
+    if(d.historial.length) pintar(d.historial[d.historial.length-1]);
+  }
+  if(d.muestra) pintar(d.muestra);
+};
+es.onerror=()=>{$('est').style.color=C.amar;$('estTxt').textContent='Reconectando…';};
+setInterval(()=>{
+  if(!equipo)return;
+  const s=Math.floor((Date.now()-new Date(equipo.arranque))/1000);
+  $('reloj').textContent='Encendido hace '+Math.floor(s/3600)+' h '+Math.floor(s%3600/60)+' min';
+},1000);
+window.addEventListener('resize',()=>{if(ultima)pintar(ultima);});
+</script>
+</body>
+</html>

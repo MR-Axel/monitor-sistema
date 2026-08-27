@@ -1,0 +1,15 @@
+# Los logs son datos privados de cada máquina: dicen qué programas usás,
+# cuánta memoria consumís y a qué hora estás frente a la computadora.
+logs/
+
+# LibreHardwareMonitor se descarga en la primera ejecución.
+# No se redistribuye: es MPL-2.0 y conviene que cada uno baje el binario
+# oficial firmado por sus autores.
+LibreHardwareMonitor/
+
+# Configuración propia de cada equipo (la potencia de la fuente es distinta
+# en cada máquina). El repo trae config.ejemplo.json.
+config.json
+
+node_modules/
+*.log
