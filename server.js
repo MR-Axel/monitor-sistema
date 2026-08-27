@@ -41,9 +41,12 @@ const CONFIG_POR_DEFECTO = {
   //   "normal" pestaña en tu navegador de siempre; queda abierta al salir
   //   "no"     no abre nada
   abrirNavegador: 'app',
-  // Tamaño de esa ventana: "ANCHOxALTO", o "maximizada" para que ocupe todo.
+  // Tamaño de esa ventana:
+  //   "auto"        casi toda la pantalla, centrada, pero en ventana (por defecto)
+  //   "ANCHOxALTO"  medida fija, por ejemplo "1280x900"
+  //   "maximizada"  ocupa todo
   // El panel se acomoda solo al tamaño que le des, incluso angosto de costado.
-  ventana: '1280x900',
+  ventana: 'auto',
   umbrales: {
     cpuTempMax: 92, gpuTempMax: 83, vrmTempMax: 100,
     ramLibreMinMB: 700, commitMaxPct: 88,
@@ -535,6 +538,25 @@ function buscarNavegador() {
   return null;
 }
 
+// Area util de la pantalla principal, o sea sin contar la barra de tareas.
+// Se usa WorkingArea de System.Windows.Forms en vez de Win32_VideoController
+// porque este equipo puede tener adaptadores virtuales (Parsec, SuperDisplay)
+// y ahi no hay forma de saber cual es el monitor de verdad.
+function areaDePantalla() {
+  try {
+    const r = require('child_process').spawnSync('powershell', ['-NoProfile', '-Command',
+      "Add-Type -AssemblyName System.Windows.Forms; " +
+      "$a=[System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; " +
+      "\"$($a.X) $($a.Y) $($a.Width) $($a.Height)\""],
+      { encoding: 'utf8', windowsHide: true, timeout: 6000 });
+    const n = (r.stdout || '').trim().split(/\s+/).map(Number);
+    if (n.length === 4 && n[2] > 400 && n[3] > 300) {
+      return { x: n[0], y: n[1], ancho: n[2], alto: n[3] };
+    }
+  } catch (e) {}
+  return null;
+}
+
 function abrirPanel(url) {
   const modo = CFG.abrirNavegador;
   if (modo === 'no') return;
@@ -542,7 +564,19 @@ function abrirPanel(url) {
   if (modo === 'app') {
     const exe = buscarNavegador();
     if (exe) {
-      const perfil = path.join(os.tmpdir(), 'monitor-sistema-perfil');
+      // El perfil lleva el puerto porque Chromium es de instancia unica POR
+      // PERFIL: si dos monitores lo comparten, la segunda ventana se abre
+      // dentro del primer proceso, ignora --window-size y encima queda fuera
+      // del alcance del taskkill al salir.
+      // Y se borra antes de arrancar porque Chromium guarda ahi el tamano de
+      // la ventana: si queda del arranque anterior, pisa lo que pidamos.
+      let perfil = path.join(os.tmpdir(), 'monitor-sistema-perfil-' + PUERTO);
+      try {
+        fs.rmSync(perfil, { recursive: true, force: true });
+      } catch (e) {
+        // lo tiene tomado otro navegador: se usa uno aparte
+        perfil += '-' + process.pid;
+      }
       const args = [
         '--app=' + url,
         '--user-data-dir=' + perfil,
@@ -550,15 +584,29 @@ function abrirPanel(url) {
         '--no-default-browser-check',
         '--disable-features=Translate,MediaRouter',
       ];
-      const v = String(CFG.ventana || '1280x900').toLowerCase().trim();
+      const v = String(CFG.ventana || 'auto').toLowerCase().trim();
+      const medida = v.match(/^(\d{3,5})\s*x\s*(\d{3,5})$/);
+
       if (v === 'maximizada' || v === 'maximizado') {
         args.push('--start-maximized');
+      } else if (medida) {
+        args.push('--window-size=' + medida[1] + ',' + medida[2]);
       } else {
-        const m = v.match(/^(\d{3,5})\s*x\s*(\d{3,5})$/);
-        const ancho = m ? m[1] : '1280';
-        const alto = m ? m[2] : '900';
-        if (!m) console.log('  ventana: "' + CFG.ventana + '" no se entiende, se usa 1280x900');
-        args.push('--window-size=' + ancho + ',' + alto);
+        // "auto": casi toda el area util, centrada, pero sigue siendo ventana
+        const p = areaDePantalla();
+        if (p) {
+          const ancho = Math.round(p.ancho * 0.94);
+          const alto = Math.round(p.alto * 0.94);
+          args.push('--window-size=' + ancho + ',' + alto);
+          args.push('--window-position=' +
+            (p.x + Math.round((p.ancho - ancho) / 2)) + ',' +
+            (p.y + Math.round((p.alto - alto) / 2)));
+          console.log('  Ventana:            ' + ancho + 'x' + alto +
+            ' (pantalla útil ' + p.ancho + 'x' + p.alto + ')');
+        } else {
+          console.log('  No se pudo leer el tamaño de pantalla, se usa 1600x950.');
+          args.push('--window-size=1600,950');
+        }
       }
       navegador = spawn(exe, args, { detached: false, stdio: 'ignore' });
       navegador.on('error', () => { navegador = null; });

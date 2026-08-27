@@ -66,7 +66,8 @@ detecta y te avisa; `detener.cmd` limpia lo que haya quedado).
 
 En `config.json`: `abrirNavegador` acepta `"app"` (por defecto), `"normal"`
 para una pestaña en tu navegador de siempre, o `"no"`. Y `ventana` acepta
-`"ANCHOxALTO"` (por defecto `"1280x900"`) o `"maximizada"`.
+`"auto"` (por defecto: el 94 % del área útil de la pantalla, centrada, pero
+sigue siendo una ventana), `"ANCHOxALTO"` o `"maximizada"`.
 
 El panel es responsive: podés dejarlo angosto contra un costado de la pantalla
 y las columnas se repliegan solas (4/5/3 → 2/3/2 → 1), achicando también los
