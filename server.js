@@ -35,6 +35,12 @@ const CONFIG_POR_DEFECTO = {
   // Permite cerrar programas desde el panel. Ponelo en false para que el
   // panel quede de solo lectura.
   permitirCerrarProgramas: true,
+  // Como se abre el panel al arrancar:
+  //   "app"    ventana propia sin barras, que se cierra sola al parar el
+  //            monitor (recomendado)
+  //   "normal" pestaña en tu navegador de siempre; queda abierta al salir
+  //   "no"     no abre nada
+  abrirNavegador: 'app',
   umbrales: {
     cpuTempMax: 92, gpuTempMax: 83, vrmTempMax: 100,
     ramLibreMinMB: 700, commitMaxPct: 88,
@@ -502,6 +508,71 @@ function procesarMuestra(m) {
   for (const c of clientes) { try { c.write(payload); } catch (e) {} }
 }
 
+// ------------------------------------------------------------- navegador
+// El panel se abre en modo aplicacion (ventana propia, sin barra de
+// direcciones) y con su PROPIO perfil temporal. Lo del perfil aparte no es
+// capricho: si comparte perfil con tu navegador de siempre, la ventana entra
+// en el proceso que ya esta corriendo y cerrarla al salir te cerraria todo.
+// Con perfil propio es un proceso independiente que se puede matar tranquilo.
+let navegador = null;
+
+function buscarNavegador() {
+  const pf = process.env['ProgramFiles'] || 'C:\\Program Files';
+  const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const local = process.env.LOCALAPPDATA || '';
+  const candidatos = [
+    path.join(pf86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(pf, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(pf, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(pf86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(pf, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+  ];
+  for (const c of candidatos) { try { if (fs.existsSync(c)) return c; } catch (e) {} }
+  return null;
+}
+
+function abrirPanel(url) {
+  const modo = CFG.abrirNavegador;
+  if (modo === 'no') return;
+
+  if (modo === 'app') {
+    const exe = buscarNavegador();
+    if (exe) {
+      const perfil = path.join(os.tmpdir(), 'monitor-sistema-perfil');
+      navegador = spawn(exe, [
+        '--app=' + url,
+        '--user-data-dir=' + perfil,
+        '--window-size=1680,1020',
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-features=Translate,MediaRouter',
+      ], { detached: false, stdio: 'ignore' });
+      navegador.on('error', () => { navegador = null; });
+      // si cerras la ventana a mano, se para tambien el monitor
+      navegador.on('exit', () => { navegador = null; cerrar(); });
+      return;
+    }
+    console.log('  No se encontro Edge/Chrome/Brave: se abre en el navegador por defecto.');
+  }
+  spawn('cmd', ['/c', 'start', '', url], { windowsHide: true, stdio: 'ignore' });
+}
+
+function cerrarNavegador() {
+  if (!navegador) return;
+  const n = navegador; navegador = null;
+  try { n.removeAllListeners('exit'); } catch (e) {}
+  // kill() mata solo el proceso principal y Chromium deja vivos todos sus
+  // hijos (renderizador, GPU, red...). Hace falta bajar el arbol entero, y
+  // sincronico porque esto tambien corre desde el handler de 'exit', donde
+  // ya no hay vuelta al bucle de eventos para nada asincronico.
+  try {
+    require('child_process').spawnSync('taskkill', ['/PID', String(n.pid), '/T', '/F'],
+      { windowsHide: true, stdio: 'ignore' });
+  } catch (e) {}
+  try { n.kill(); } catch (e) {}
+}
+
 // ------------------------------------------------------- cerrar programas
 // Ficha de seguridad, porque esto apaga procesos del usuario:
 //  - el servidor escucha SOLO en 127.0.0.1
@@ -668,9 +739,11 @@ leerLHM();
 setInterval(leerLHM, INTERVALO);
 
 server.listen(PUERTO, '127.0.0.1', () => {
-  console.log('\n  Monitor corriendo:  http://localhost:' + PUERTO);
+  const url = 'http://localhost:' + PUERTO;
+  console.log('\n  Monitor corriendo:  ' + url);
   console.log('  Logs en:            ' + LOGS);
   console.log('  Muestreo cada:      ' + INTERVALO + ' ms');
+  abrirPanel(url);
   setTimeout(() => {
     console.log('  LibreHardwareMonitor: ' + (lhmVivo
       ? 'conectado (temp CPU, ventiladores y voltajes activos)'
@@ -679,9 +752,16 @@ server.listen(PUERTO, '127.0.0.1', () => {
   }, 3000);
 });
 
+let cerrando = false;
 function cerrar() {
+  if (cerrando) return;
+  cerrando = true;
+  cerrarNavegador();
   try { escribir({ tipo: 'cierre', ts: new Date().toISOString(), muestras: nMuestras }); } catch (e) {}
   process.exit(0);
 }
 process.on('SIGINT', cerrar);
 process.on('SIGTERM', cerrar);
+process.on('SIGHUP', cerrar);
+// tambien si cierran la ventana negra con la X
+process.on('exit', () => { cerrarNavegador(); });

@@ -691,7 +691,33 @@ es.onmessage=ev=>{
   }
   if(d.muestra) pintar(d.muestra);
 };
-es.onerror=()=>{$('est').style.color=C.amar;$('estTxt').textContent='Reconectando…';};
+/* Si abriste el panel en tu navegador de siempre (abrirNavegador:"normal"),
+   la ventana no se puede cerrar sola: los navegadores solo permiten
+   window.close() en ventanas abiertas por script. En ese caso al menos queda
+   claro que el monitor se paró, en vez de una pantalla congelada. */
+let fallos=0;
+es.onerror=()=>{
+  $('est').style.color=C.amar; $('estTxt').textContent='Reconectando…';
+  if(++fallos<5 || document.getElementById('detenido')) return;
+  // Red de seguridad: si el server murió de golpe (consola cerrada con la X)
+  // no alcanzó a matar esta ventana. En modo app Chromium suele dejar que la
+  // página se cierre sola; si no puede, queda el cartel de abajo.
+  try{ window.close(); }catch(e){}
+  const d=document.createElement('div');
+  d.id='detenido';
+  d.style.cssText='position:fixed;inset:0;background:rgba(13,17,23,.94);z-index:99;'+
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center';
+  d.innerHTML='<div style="font-size:26px;font-weight:600">El monitor se detuvo</div>'+
+    '<div style="color:var(--txt2);font-size:16px;max-width:460px;line-height:1.5">'+
+    'Se cortó la conexión con el servidor. Podés cerrar esta ventana; '+
+    'si volvés a arrancarlo, se reconecta sola.</div>'+
+    '<button onclick="window.close()" style="font-size:15px;padding:10px 22px">Cerrar ventana</button>';
+  document.body.appendChild(d);
+};
+es.addEventListener('open',()=>{
+  fallos=0;
+  const d=document.getElementById('detenido'); if(d) d.remove();
+});
 setInterval(()=>{
   if(!equipo)return;
   const s=Math.floor((Date.now()-new Date(equipo.arranque))/1000);

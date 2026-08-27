@@ -52,12 +52,20 @@ según cuánto se acerca a su límite, en vez de saltar de golpe al cruzarlo.
 iniciar.cmd
 ```
 
-Abre el panel en <http://localhost:7070>. El servidor escucha **solo en
-`127.0.0.1`**: no queda expuesto a la red.
+El panel se abre en una **ventana propia** del navegador, con su propio perfil
+temporal. Eso último importa: si compartiera perfil con tu navegador de
+siempre, la ventana entraría en el proceso que ya está corriendo y cerrarla al
+salir te cerraría todo. Con perfil aparte es un proceso independiente.
 
-**Cortalo con `Ctrl+C`**, no cerrando la ventana. El `Ctrl+C` deja la marca de
-cierre limpio; si cerrás con la X, el próximo arranque lo va a interpretar como
-un corte de energía.
+El servidor escucha **solo en `127.0.0.1`**: no queda expuesto a la red.
+
+**Cortalo con `Ctrl+C`.** Eso deja la marca de cierre limpio y **cierra sola la
+ventana del panel**. Si cerrás la consola con la X, el próximo arranque lo va a
+interpretar como un corte de energía, y la ventana queda huérfana (la página lo
+detecta y te avisa; `detener.cmd` limpia lo que haya quedado).
+
+En `config.json`, `abrirNavegador` acepta `"app"` (por defecto), `"normal"`
+para una pestaña en tu navegador de siempre, o `"no"`.
 
 ### Leer los registros
 

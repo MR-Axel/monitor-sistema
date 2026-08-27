@@ -23,5 +23,6 @@ if exist "LibreHardwareMonitor\LibreHardwareMonitor.exe" (
   )
 )
 
-start "" http://localhost:7070
+REM El panel lo abre server.js: asi puede cerrar la ventana solo
+REM cuando parás el monitor con Ctrl+C.
 node server.js
