@@ -124,9 +124,27 @@ algo de a ratos, porque sus servidores MCP hacen su ronda. Lo que las separa es
 la **tasa**: medido sobre 30 segundos, una sesión esperando da 0 a 0,035 de un
 núcleo, que es el piso de ruido. El corte está en 0,04.
 
+Cada sesión lleva `--resume=<uuid>` en su línea de comandos, y ese uuid es el
+nombre de su transcript dentro de `~/.claude/projects/`. De ahí salen **el
+proyecto, el primer mensaje como título y la fecha de la última escritura**, que
+es el dato que de verdad dice hace cuánto que no la usás:
+
 ```
-10 abiertas · 8,0 GB · 10 sin usarse ocupan 8,0 GB
+proyecto        memoria  sin usar   título
+GitHub          1037 MB  5 min      actualicemos el portfolio…
+GitHub           937 MB  5,3 h      voy a publicitar en linkedin…
+GitHub           864 MB  9,3 h      reiniciame las cuentas de test…
+PID 29884        879 MB  —          (sesión nueva, todavía sin transcript)
 ```
+
+El título se cachea porque no cambia y los transcripts pueden pesar cientos de
+MB; la fecha se relee en cada muestra usando la ruta cacheada, sin volver a
+buscar el archivo.
+
+**Cerrar sesiones.** Cada fila tiene su ✕, y si hay más de una sin usarse hace
+más de 30 minutos aparece un botón para cerrarlas todas de una. Cerrar una
+sesión no pierde la conversación: queda en el transcript y se retoma con
+`claude --resume`. Se pierde solo el estado en memoria.
 
 La sección aparece sola si hay sesiones y se esconde si no hay ninguna.
 

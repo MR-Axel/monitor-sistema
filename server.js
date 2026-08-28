@@ -832,6 +832,44 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Cerrar UNA sesion de Claude Code por su PID.
+  // Es aparte de /api/cerrar porque aquel apaga por nombre y mataria todas.
+  // El PID se valida contra las sesiones de la ultima muestra: solo se puede
+  // cerrar algo que el propio monitor reconocio como sesion de Claude Code.
+  if (url.pathname === '/api/cerrar-sesion' && req.method === 'POST') {
+    const responder = (estado, cuerpo) => {
+      res.writeHead(estado, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(cuerpo));
+    };
+    if (!CFG.permitirCerrarProgramas) return responder(403, { error: 'Deshabilitado en config.json' });
+    if (!origenValido(req)) return responder(403, { error: 'Origen no permitido' });
+
+    let cuerpo = '';
+    req.on('data', c => { cuerpo += c; if (cuerpo.length > 2048) req.destroy(); });
+    req.on('end', () => {
+      let d;
+      try { d = JSON.parse(cuerpo); } catch (e) { return responder(400, { error: 'JSON invalido' }); }
+      if (d.token !== TOKEN) return responder(403, { error: 'Token invalido' });
+
+      const ult = historial[historial.length - 1];
+      const conocidas = ult && ult.claude ? ult.claude.sesiones.map(s => s.pid) : [];
+      if (!conocidas.includes(d.pid)) {
+        return responder(403, { error: 'Ese PID no es una sesión de Claude Code conocida' });
+      }
+
+      const p = spawn('taskkill', ['/PID', String(d.pid), '/T', '/F'], { windowsHide: true });
+      let salida = '';
+      p.stdout.on('data', b => { salida += b.toString(); });
+      p.stderr.on('data', b => { salida += b.toString(); });
+      p.on('error', e => responder(200, { ok: false, detalle: e.message }));
+      p.on('close', code => {
+        console.log('  [cerrar sesión] PID ' + d.pid + ' -> ' + (code === 0 ? 'cerrada' : 'falló'));
+        responder(200, { ok: code === 0, pid: d.pid, detalle: salida.trim() });
+      });
+    });
+    return;
+  }
+
   if (url.pathname === '/api/estado') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({

@@ -33,6 +33,50 @@ $antesRed    = $null
 $antesDisco  = $null
 $antesTiempo = $null
 
+# Cache de titulos de sesion. Cada sesion de Claude Code lleva --resume=<uuid>
+# en su linea de comandos, y ese uuid es el nombre de su transcript dentro de
+# ~/.claude/projects/<carpeta-del-proyecto>/. De ahi salen el proyecto y el
+# primer mensaje, que sirve de titulo. Se cachea porque no cambia y los
+# transcripts pueden pesar cientos de MB.
+$titulos = @{}
+$raizProyectos = Join-Path $env:USERPROFILE '.claude\projects'
+
+function Obtener-Titulo($uuid) {
+    if ($titulos.ContainsKey($uuid)) { return $titulos[$uuid] }
+
+    $r = [ordered]@{ proyecto = $null; titulo = $null; ruta = $null }
+    # Se guarda tambien la RUTA del transcript. Sin eso habria que hacer una
+    # busqueda recursiva por todas las carpetas de proyecto en cada muestra,
+    # o sea cada 2 segundos por sesion, que es carisimo.
+    $f = Get-ChildItem $raizProyectos -Recurse -Filter "$uuid.jsonl" -ErrorAction SilentlyContinue |
+         Select-Object -First 1
+    if ($f) {
+        $r.ruta = $f.FullName
+        # el nombre de la carpeta es la ruta con guiones: interesa el final
+        $r.proyecto = (($f.Directory.Name -split '-' | Where-Object { $_ }) | Select-Object -Last 1)
+        # solo las primeras lineas: el archivo puede pesar cientos de MB
+        foreach ($l in (Get-Content $f.FullName -TotalCount 60 -ErrorAction SilentlyContinue)) {
+            try { $j = $l | ConvertFrom-Json } catch { continue }
+            if ($j.type -eq 'user' -and $j.message.content) {
+                $c = $j.message.content
+                if ($c -is [string]) { $t = $c }
+                else { $t = ($c | Where-Object { $_.type -eq 'text' } | Select-Object -First 1).text }
+                if ($t) {
+                    $t = ($t -replace '\s+', ' ').Trim()
+                    # los mensajes del sistema no sirven como titulo
+                    if ($t -notmatch '^<' -and $t.Length -gt 3) {
+                        $r.titulo = if ($t.Length -gt 70) { $t.Substring(0, 70) } else { $t }
+                        break
+                    }
+                }
+            }
+        }
+        # el titulo no cambia nunca: se cachea
+        $titulos[$uuid] = $r
+    }
+    return $r
+}
+
 while ($true) {
     $t0 = Get-Date
 
@@ -98,13 +142,27 @@ while ($true) {
                     $mcpMB += [math]::Round($n.PrivatePageCount / 1048576, 0)
                 }
             }
+            $uuid = if ($cl -match '--resume=([0-9a-f\-]{36})') { $matches[1] } else { $null }
+            $info = if ($uuid) { Obtener-Titulo $uuid } else { $null }
+            # La fecha del transcript se relee en cada muestra porque es lo que
+            # dice cuando trabajo por ultima vez, pero se usa la ruta cacheada:
+            # buscarla de nuevo cada 2 segundos por sesion seria carisimo.
+            $ultima = $null
+            if ($info -and $info.ruta -and (Test-Path $info.ruta)) {
+                $ultima = (Get-Item $info.ruta).LastWriteTime.ToString('o')
+            }
+
             $sesiones += [ordered]@{
-                pid    = $c.ProcessId
-                mb     = [int]$mb
-                mcp    = [int]$mcp
-                mcpMB  = [int]$mcpMB
-                inicio = $c.CreationDate.ToString('o')
-                cpuSeg = [int](($c.KernelModeTime + $c.UserModeTime) / 10000000)
+                pid      = $c.ProcessId
+                mb       = [int]$mb
+                mcp      = [int]$mcp
+                mcpMB    = [int]$mcpMB
+                inicio   = $c.CreationDate.ToString('o')
+                cpuSeg   = [int](($c.KernelModeTime + $c.UserModeTime) / 10000000)
+                uuid     = $uuid
+                proyecto = if ($info) { $info.proyecto } else { $null }
+                titulo   = if ($info) { $info.titulo } else { $null }
+                ultima   = $ultima
             }
         } else {
             $escritorioMB += $mb

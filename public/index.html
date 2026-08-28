@@ -51,6 +51,9 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 /* las tarjetas de detalle van en grillas auto-fit: si apagás una, las que
    quedan se reacomodan solas en vez de dejar una columna vacía */
 .gdet{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+/* la de sesiones lleva tabla y necesita más ancho que las otras */
+.ancho2{grid-column:span 2}
+@media(max-width:940px){.ancho2{grid-column:auto}}
 
 /* ---- ajustes ---- */
 .panel-aj{padding:16px 18px}
@@ -314,21 +317,20 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
      conviven las sesiones del editor y la app de escritorio, que no son lo
      mismo y sumarlas juntas da un número que no significa nada -->
 <div class="g gdet" id="filaClaude" style="display:none">
-  <div class="caja" data-sec="claude"><div class="tit">Sesiones de Claude Code</div>
+  <div class="caja ancho2" data-sec="claude"><div class="tit">Sesiones de Claude Code</div>
     <div class="ayu" id="ayuCC">Cada una con sus servidores MCP colgando</div>
-    <div class="scr" style="max-height:250px"><table class="tcc"><thead><tr>
-      <th style="width:16%">Estado</th><th style="width:14%">PID</th>
-      <th style="width:20%;text-align:right">Memoria</th>
-      <th style="width:24%;text-align:right">Abierta</th>
-      <th style="width:26%;text-align:right">Sin usarse</th>
+    <div class="scr" style="max-height:300px"><table class="tcc"><thead><tr>
+      <th style="width:40%">Sesión</th>
+      <th style="width:16%;text-align:right">Memoria</th>
+      <th style="width:18%;text-align:right">Sin usarse</th>
+      <th style="width:16%;text-align:right">Abierta</th>
+      <th style="width:10%"></th>
       </tr></thead><tbody id="ccSesiones"></tbody></table></div>
-    <div class="sub" id="ccResumen" style="margin-top:9px"></div></div>
-
-  <div class="caja" data-sec="claude-actividad"><div class="tit">Actividad de sesiones</div>
-    <div class="ayu">Qué se abrió y qué se cerró, detectado cada 2 segundos</div>
-    <div class="scr reg" id="ccActividad" style="max-height:250px">
-      <div class="nada">Sin movimientos desde que arrancó el monitor</div></div>
-    <div class="sub" id="ccProyectos" style="margin-top:9px"></div></div>
+    <div class="sub" id="ccResumen" style="margin-top:9px"></div>
+    <div style="margin-top:10px"><button id="ccLimpiar" style="display:none"></button></div>
+    <!-- la actividad va acá adentro: es lo mismo que la tabla, no otro tema -->
+    <div class="ayu" id="ccProyectos" style="margin:11px 0 0"></div>
+    <div class="reg" id="ccActividad" style="max-height:80px;overflow-y:auto"></div></div>
 </div>
 
 <!-- fila 4: recomendaciones e incidentes, cada una en su panel -->
@@ -702,7 +704,7 @@ function haceCuanto(iso){
 function pintarClaude(m){
   const c=m.claude;
   const fila=$('filaClaude');
-  const apagada=aj.ocultas.includes('claude')&&aj.ocultas.includes('claude-actividad');
+  const apagada=aj.ocultas.includes('claude');
   if(apagada||!c||!c.sesiones||!c.sesiones.length){ fila.style.display='none'; return; }
   fila.style.display='';
 
@@ -721,23 +723,38 @@ function pintarClaude(m){
   $('ccSesiones').innerHTML=ses.map(s=>{
     const t=s.mb+s.mcpMB;
     const col=escala(t,[[300,C.verde],[600,C.verde],[900,C.amar],[1300,C.rojo]]);
-    // lo que importa no es cuánta CPU gastó en total, sino hace cuánto que no
-    // gasta nada: eso es lo que dice si la podés cerrar
-    const quieta=s.quietaMs||0;
-    const punto=s.activa
-      ? '<span style="color:var(--verde)">● en uso</span>'
-      : '<span style="color:var(--txt3)">○ quieta</span>';
-    const desde=s.activa ? '—'
-      : (quieta<60000 ? Math.round(quieta/1000)+' s'
-        : quieta<3600000 ? Math.round(quieta/60000)+' min'
-        : (quieta/3600000).toFixed(1)+' h');
+    // el dato que decide si la podés cerrar es hace cuánto que no trabaja,
+    // no cuánta CPU gastó en total
+    const inact=s.ultima ? Date.now()-new Date(s.ultima) : (s.quietaMs||0);
+    const desde=s.activa ? '<span style="color:var(--verde)">en uso</span>'
+      : (inact<60000 ? Math.round(inact/1000)+' s'
+        : inact<3600000 ? Math.round(inact/60000)+' min'
+        : (inact/3600000).toFixed(1)+' h');
+    const nombre=s.proyecto
+      ? '<b style="color:var(--txt)">'+s.proyecto+'</b>'
+      : '<span style="color:var(--txt3)">PID '+s.pid+'</span>';
+    const sub=s.titulo
+      ? '<div style="font-size:11.5px;color:var(--txt3);overflow:hidden;'+
+        'text-overflow:ellipsis;white-space:nowrap">'+s.titulo+'</div>'
+      : '';
     return '<tr'+(s.activa?' style="background:#0f2419"':'')+'>'+
-      '<td style="font-size:12.5px">'+punto+'</td>'+
-      '<td class="n" style="text-align:left;color:var(--txt3)">'+s.pid+'</td>'+
+      '<td style="font-size:13px">'+(s.activa?'● ':'○ ')+nombre+sub+'</td>'+
       '<td class="n" style="color:'+col+'">'+t+' MB</td>'+
+      '<td class="n" style="color:'+(!s.activa&&inact>1800000?'var(--amar)':'var(--txt2)')+'">'+desde+'</td>'+
       '<td class="n">'+haceCuanto(s.inicio)+'</td>'+
-      '<td class="n" style="color:'+(quieta>1800000?'var(--amar)':'var(--txt2)')+'">'+desde+'</td></tr>';
+      '<td style="text-align:right"><button class="x cerrar-ses" data-pid="'+s.pid+
+        '" data-nom="'+(s.proyecto||('PID '+s.pid))+'" title="Cerrar esta sesión">✕</button></td></tr>';
   }).join('');
+
+  // botón para cerrar de una todas las que hace rato no trabajan
+  const viejas=ses.filter(s=>!s.activa && s.ultima && (Date.now()-new Date(s.ultima))>1800000);
+  const btn=$('ccLimpiar');
+  if(viejas.length>1){
+    const mbV=viejas.reduce((a,s)=>a+s.mb+s.mcpMB,0);
+    btn.style.display='';
+    btn.textContent='Cerrar las '+viejas.length+' sin usar hace +30 min · libera '+(mbV/1024).toFixed(1)+' GB';
+    btn.dataset.pids=viejas.map(s=>s.pid).join(',');
+  } else { btn.style.display='none'; }
 
   const esc=c.escritorioMB
     ? '<br>App de escritorio: <b>'+(c.escritorioMB/1024).toFixed(1)+'</b> GB en <b>'+
@@ -747,7 +764,7 @@ function pintarClaude(m){
 
   // aperturas y cierres
   const nov=m.novedadesClaude||[];
-  if(nov.length) $('ccActividad').innerHTML=nov.slice().reverse().map(n=>
+  $('ccActividad').innerHTML=!nov.length ? '' : nov.slice().reverse().map(n=>
     '<div><time>'+hora(n.ts)+'</time><span style="color:'+
     (n.tipo==='abrio'?'var(--verde)':'var(--txt3)')+'">'+
     (n.tipo==='abrio'?'▲ ':'▼ ')+n.texto+
@@ -887,6 +904,46 @@ document.getElementById('procs').addEventListener('click',async ev=>{
   }
 });
 
+/* --------------------------------------------- cerrar sesiones de Claude
+   Cerrar una sesión NO pierde la conversación: queda en el transcript y se
+   puede retomar. Lo que se pierde es el estado en memoria, o sea que si
+   estaba a mitad de una respuesta, esa respuesta se corta.               */
+async function cerrarSesion(pid){
+  const r=await fetch('/api/cerrar-sesion',{
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token:token,pid:pid})
+  });
+  return r.json();
+}
+
+document.getElementById('ccSesiones').addEventListener('click',async ev=>{
+  const b=ev.target.closest('button.cerrar-ses'); if(!b) return;
+  if(!token){ alert('Cerrar está deshabilitado en config.json.'); return; }
+  const pid=Number(b.dataset.pid);
+  if(!confirm('¿Cerrar la sesión de '+b.dataset.nom+'?\n\n'+
+    'La conversación queda guardada y la podés retomar con "claude --resume". '+
+    'Se pierde solo el estado en memoria: si está a mitad de una respuesta, se corta.')) return;
+  b.disabled=true; b.textContent='…';
+  const res=await cerrarSesion(pid);
+  b.textContent=res.ok?'✓':'✕';
+  if(!res.ok){ b.disabled=false; alert('No se pudo: '+(res.error||res.detalle||'')); }
+});
+
+$('ccLimpiar').onclick=async ev=>{
+  const b=ev.target, pids=(b.dataset.pids||'').split(',').filter(Boolean).map(Number);
+  if(!pids.length||!token) return;
+  if(!confirm('¿Cerrar '+pids.length+' sesiones que no trabajan hace más de 30 minutos?\n\n'+
+    'Todas las conversaciones quedan guardadas y se pueden retomar con "claude --resume".')) return;
+  b.disabled=true;
+  let ok=0;
+  for(const p of pids){
+    b.textContent='Cerrando… '+(ok+1)+' de '+pids.length;
+    try{ if((await cerrarSesion(p)).ok) ok++; }catch(e){}
+  }
+  b.textContent='Se cerraron '+ok+' de '+pids.length;
+  setTimeout(()=>{b.disabled=false;},2500);
+};
+
 /* ------------------------------------------------------------- ajustes
    Se guardan en el navegador. localStorage puede fallar (ventana privada,
    datos de sitio bloqueados), así que todo va con try y valores por defecto:
@@ -895,7 +952,6 @@ const SECCIONES=[
   ['diagnostico','Diagnóstico'], ['carga','Carga'],
   ['temperaturas','Temperaturas'], ['ventiladores','Ventiladores'],
   ['procesos','Procesos'], ['claude','Claude Code'],
-  ['claude-actividad','Actividad Claude'],
   ['recomendaciones','Recomendaciones'], ['incidentes','Incidentes'],
 ];
 const VISTAS=[['completa','Completo'],['compacta','Compacto'],['minima','Solo lo crítico']];
