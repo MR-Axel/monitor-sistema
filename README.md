@@ -94,6 +94,29 @@ Corte en muestras-2026-08-28.jsonl · última muestra 28/8/2026, 01:12:44
 
 Los archivos crudos quedan en `logs/`, un JSON por línea.
 
+## Sección de Claude Code
+
+Si usás Claude Code, el panel muestra sus sesiones aparte del resto. El motivo
+es que bajo el mismo nombre de proceso conviven dos cosas distintas, y sumarlas
+juntas da un número que no significa nada:
+
+- **Las sesiones del CLI**, que cuelgan del editor y se reconocen por
+  `--output-format stream-json`. Cada una arrastra sus servidores MCP.
+- **La aplicación de escritorio**, que es Electron: un proceso principal más su
+  cortejo de `--type=renderer`, `--type=gpu-process` y demás.
+
+Por cada sesión se ve memoria propia, memoria de sus MCP, cuánto hace que está
+abierta y CPU acumulada. Y como el muestreo es cada 2 segundos, comparando los
+PID de una muestra a la otra se detecta qué sesión se abrió y cuál se cerró.
+
+```
+10 sesiones · 8,1 GB contando sus servidores MCP
+promedio por sesión: 827 MB
+app de escritorio: 1,3 GB en 12 procesos
+```
+
+La sección aparece sola si hay sesiones y se esconde si no hay ninguna.
+
 ## Cerrar programas desde el panel
 
 En la tabla de memoria, cada programa conocido tiene una **✕** al pasar el

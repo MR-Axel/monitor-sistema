@@ -428,6 +428,39 @@ function calcularCpuPct() {
   return Math.max(0, Math.min(100, Math.round(100 * (1 - dIdle / dTotal))));
 }
 
+// --------------------------------------------------- sesiones de Claude
+// Se comparan los PID de una muestra a la otra para saber cuales aparecieron
+// y cuales se fueron. Como el muestreo es cada 2 s, una sesion que abre y
+// cierra mas rapido que eso no se ve; para lo que interesa alcanza.
+let pidsClaude = null;
+
+function novedadesClaude(m) {
+  if (!m.claude) return;
+  const ahora = new Set(m.claude.sesiones.map(s => s.pid));
+
+  if (pidsClaude === null) { pidsClaude = ahora; return; } // primera muestra
+
+  const nuevas = [...ahora].filter(p => !pidsClaude.has(p));
+  const idas = [...pidsClaude].filter(p => !ahora.has(p));
+
+  for (const p of nuevas) {
+    const s = m.claude.sesiones.find(x => x.pid === p);
+    registrarClaude(m.ts, 'abrio', 'Sesión de Claude Code abierta (PID ' + p + ')', s ? s.mb : null);
+  }
+  for (const p of idas) {
+    registrarClaude(m.ts, 'cerro', 'Sesión de Claude Code cerrada (PID ' + p + ')', null);
+  }
+  pidsClaude = ahora;
+}
+
+const novedades = []; // ultimas aperturas y cierres, para el panel
+function registrarClaude(ts, tipo, texto, mb) {
+  const ev = { ts: ts, tipo: tipo, texto: texto, mb: mb };
+  novedades.push(ev);
+  if (novedades.length > 60) novedades.shift();
+  escribirEvento({ ts: ts, tipo: 'CLAUDE_' + tipo.toUpperCase(), detalle: texto, mb: mb });
+}
+
 // ---------------------------------------------------------------- muestra
 function procesarMuestra(m) {
   const c = calcularCpuPct();
@@ -500,6 +533,9 @@ function procesarMuestra(m) {
     escribirEvento(ev);
     m.alerta = disparados.map(d => d.msg);
   }
+
+  novedadesClaude(m);
+  m.novedadesClaude = novedades.slice(-8);
 
   historial.push(m);
   if (historial.length > MAX_HISTORIAL) historial.shift();

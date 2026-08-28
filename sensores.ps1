@@ -71,6 +71,67 @@ while ($true) {
     $antesDisco  = @($ioLee, $ioEsc)
     $antesTiempo = $t0
 
+    # --- Claude Code -------------------------------------------------------
+    # Ojo: bajo el mismo nombre claude.exe conviven dos cosas distintas.
+    #   1. Las sesiones del CLI, que cuelgan del editor y se reconocen por
+    #      --output-format stream-json.
+    #   2. La aplicacion de escritorio, que es Electron: un proceso principal
+    #      sin argumentos mas su cortejo de --type=renderer/gpu/utility.
+    # Sumarlas juntas da un numero que no significa nada.
+    $claude = @($procs | Where-Object { $_.Name -eq 'claude.exe' })
+    $sesiones = @()
+    $escritorioMB = 0
+    $escritorioProcs = 0
+
+    foreach ($c in $claude) {
+        $cl = $c.CommandLine
+        $mb = [math]::Round($c.PrivatePageCount / 1048576, 0)
+
+        if ($cl -and $cl -match 'output-format\s+stream-json') {
+            $hijos = @($procs | Where-Object { $_.ParentProcessId -eq $c.ProcessId })
+            # los hijos de una sesion son los servidores MCP (cada uno cmd -> node)
+            $mcp = @($hijos | Where-Object { $_.Name -eq 'cmd.exe' }).Count
+            $mcpMB = 0
+            foreach ($h in $hijos) {
+                $mcpMB += [math]::Round($h.PrivatePageCount / 1048576, 0)
+                foreach ($n in @($procs | Where-Object { $_.ParentProcessId -eq $h.ProcessId })) {
+                    $mcpMB += [math]::Round($n.PrivatePageCount / 1048576, 0)
+                }
+            }
+            $sesiones += [ordered]@{
+                pid    = $c.ProcessId
+                mb     = [int]$mb
+                mcp    = [int]$mcp
+                mcpMB  = [int]$mcpMB
+                inicio = $c.CreationDate.ToString('o')
+                cpuSeg = [int](($c.KernelModeTime + $c.UserModeTime) / 10000000)
+            }
+        } else {
+            $escritorioMB += $mb
+            $escritorioProcs++
+        }
+    }
+
+    # Proyectos con actividad reciente: se deduce de los transcripts que Claude
+    # va escribiendo. No es el directorio real del proceso (Windows no lo
+    # expone facil), es el ultimo proyecto que escribio en disco.
+    $activos = @()
+    $raizProy = Join-Path $env:USERPROFILE '.claude\projects'
+    if (Test-Path $raizProy) {
+        $corte = (Get-Date).AddMinutes(-10)
+        $activos = @(Get-ChildItem $raizProy -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $u = Get-ChildItem $_.FullName -Filter *.jsonl -ErrorAction SilentlyContinue |
+                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($u -and $u.LastWriteTime -gt $corte) {
+                [ordered]@{
+                    # el nombre de carpeta es la ruta con guiones: se deja el final
+                    n = ($_.Name -split '-' | Where-Object { $_ } | Select-Object -Last 2) -join '-'
+                    m = $u.LastWriteTime.ToString('o')
+                }
+            }
+        })
+    }
+
     # --- top 8 procesos por memoria privada --------------------------------
     $tops = $procs |
         Where-Object { $_.PrivatePageCount -gt 0 } |
@@ -99,7 +160,13 @@ while ($true) {
         redMbps      = $redMbps
         nProcesos    = $procs.Count
         procesos     = @($tops)
-    } | ConvertTo-Json -Compress -Depth 4
+        claude       = [ordered]@{
+            sesiones        = @($sesiones)
+            escritorioMB    = [int]$escritorioMB
+            escritorioProcs = [int]$escritorioProcs
+            proyectos       = @($activos)
+        }
+    } | ConvertTo-Json -Compress -Depth 5
 
     $tardo = ((Get-Date) - $t0).TotalMilliseconds
     $esperar = $IntervaloMs - $tardo

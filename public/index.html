@@ -50,6 +50,7 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 .g5{grid-template-columns:repeat(5,1fr)}
 .gb{grid-template-columns:1.15fr .8fr 1.05fr}
 .g2{grid-template-columns:1fr 1fr}
+.gcc{grid-template-columns:1.25fr 1fr}
 
 /* --- por ANCHO --- */
 @media(max-width:1560px){ .g5{grid-template-columns:repeat(4,1fr)} }
@@ -61,6 +62,7 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 }
 @media(max-width:940px){
   .g5{grid-template-columns:repeat(2,1fr)}
+  .gcc{grid-template-columns:1fr}
   .gb{grid-template-columns:1fr}
   .gb>:nth-child(3){grid-column:auto}
   .g2{grid-template-columns:1fr}
@@ -257,6 +259,26 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
     <div class="ayu">Privada, sin contar lo que comparten entre procesos</div>
     <div class="scr"><table><thead><tr><th>Programa</th><th style="text-align:right">Proc</th>
       <th style="text-align:right">MB</th><th></th></tr></thead><tbody id="procs"></tbody></table></div></div>
+</div>
+
+<!-- Claude Code: se separa del resto porque bajo el mismo nombre de proceso
+     conviven las sesiones del editor y la app de escritorio, que no son lo
+     mismo y sumarlas juntas da un número que no significa nada -->
+<div class="g gcc" id="filaClaude" style="display:none">
+  <div class="caja"><div class="tit">Sesiones de Claude Code</div>
+    <div class="ayu" id="ayuCC">Cada una con sus servidores MCP colgando</div>
+    <div class="scr" style="max-height:250px"><table><thead><tr>
+      <th style="width:66px">PID</th><th style="text-align:right">MB</th>
+      <th style="text-align:right">MCP</th><th style="text-align:right">Abierta</th>
+      <th style="text-align:right">CPU</th><th style="width:26px"></th>
+      </tr></thead><tbody id="ccSesiones"></tbody></table></div>
+    <div class="sub" id="ccResumen" style="margin-top:9px"></div></div>
+
+  <div class="caja"><div class="tit">Actividad de sesiones</div>
+    <div class="ayu">Qué se abrió y qué se cerró, detectado cada 2 segundos</div>
+    <div class="scr reg" id="ccActividad" style="max-height:250px">
+      <div class="nada">Sin movimientos desde que arrancó el monitor</div></div>
+    <div class="sub" id="ccProyectos" style="margin-top:9px"></div></div>
 </div>
 
 <!-- fila 4: recomendaciones e incidentes, cada una en su panel -->
@@ -606,6 +628,8 @@ function pintar(m){
         : '')+'</td></tr>';
   }).join('');
 
+  pintarClaude(m);
+
   // estado
   const e=$('est');
   if(m.alerta&&m.alerta.length){e.style.color=C.rojo;$('estTxt').textContent=m.alerta[0];m.alerta.forEach(a=>anotar(m.ts,a));}
@@ -613,6 +637,62 @@ function pintar(m){
 }
 
 const ventCpu=m=>{const v=(m.ventiladores||[]).find(f=>/CPU/i.test(f.nombre));return v?v.rpm:null;};
+
+/* ------------------------------------------------------------ Claude Code
+   Las sesiones del editor y la app de escritorio se cuentan por separado:
+   comparten el nombre claude.exe pero no son lo mismo, y sumarlas da un
+   número que no dice nada.                                                */
+function haceCuanto(iso){
+  const s=Math.floor((Date.now()-new Date(iso))/1000);
+  if(s<60) return s+' s';
+  if(s<3600) return Math.floor(s/60)+' min';
+  const h=Math.floor(s/3600), mn=Math.floor(s%3600/60);
+  return h+' h'+(mn?' '+mn+'m':'');
+}
+function pintarClaude(m){
+  const c=m.claude;
+  const fila=$('filaClaude');
+  if(!c||!c.sesiones||!c.sesiones.length){ fila.style.display='none'; return; }
+  fila.style.display='';
+
+  const ses=c.sesiones.slice().sort((a,b)=>(b.mb+b.mcpMB)-(a.mb+a.mcpMB));
+  const total=ses.reduce((t,s)=>t+s.mb+s.mcpMB,0);
+  const maxS=ses[0] ? ses[0].mb+ses[0].mcpMB : 1;
+
+  $('ayuCC').innerHTML='<b>'+ses.length+'</b> sesiones · <b>'+(total/1024).toFixed(1)+
+    ' GB</b> contando sus servidores MCP';
+
+  $('ccSesiones').innerHTML=ses.map(s=>{
+    const t=s.mb+s.mcpMB;
+    const col=escala(t,[[300,C.verde],[600,C.verde],[900,C.amar],[1300,C.rojo]]);
+    return '<tr><td class="n" style="text-align:left;color:var(--txt3)">'+s.pid+'</td>'+
+      '<td class="n" style="color:'+col+'">'+s.mb+'</td>'+
+      '<td class="n">'+(s.mcp?'+'+s.mcpMB:'—')+'</td>'+
+      '<td class="n">'+haceCuanto(s.inicio)+'</td>'+
+      '<td class="n">'+(s.cpuSeg>=60?Math.round(s.cpuSeg/60)+'m':s.cpuSeg+'s')+'</td>'+
+      '<td style="width:26px"><span class="mb" style="width:22px"><i style="width:'+
+        (100*t/maxS)+'%;background:'+col+'"></i></span></td></tr>';
+  }).join('');
+
+  const esc=c.escritorioMB
+    ? '<br>App de escritorio: <b>'+(c.escritorioMB/1024).toFixed(1)+'</b> GB en <b>'+
+      c.escritorioProcs+'</b> procesos (Electron, aparte de las sesiones)'
+    : '';
+  $('ccResumen').innerHTML='Promedio por sesión: <b>'+Math.round(total/ses.length)+'</b> MB'+esc;
+
+  // aperturas y cierres
+  const nov=m.novedadesClaude||[];
+  if(nov.length) $('ccActividad').innerHTML=nov.slice().reverse().map(n=>
+    '<div><time>'+hora(n.ts)+'</time><span style="color:'+
+    (n.tipo==='abrio'?'var(--verde)':'var(--txt3)')+'">'+
+    (n.tipo==='abrio'?'▲ ':'▼ ')+n.texto+
+    (n.mb?' · '+n.mb+' MB':'')+'</span></div>').join('');
+
+  const pr=c.proyectos||[];
+  $('ccProyectos').innerHTML=pr.length
+    ? 'Proyectos escribiendo hace poco: '+pr.map(p=>'<b>'+p.n+'</b>').join(', ')
+    : '<span style="color:var(--txt3)">Ningún proyecto escribió en los últimos 10 minutos</span>';
+}
 function anotar(ts,msg){
   const k=ts+msg; if(registro.some(r=>r.k===k))return;
   registro.push({k:k,ts:ts,msg:msg}); if(registro.length>150)registro.shift();
