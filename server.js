@@ -434,6 +434,47 @@ function calcularCpuPct() {
 // cierra mas rapido que eso no se ve; para lo que interesa alcanza.
 let pidsClaude = null;
 
+// Una sesion abierta no es una sesion trabajando: queda viva guardando su
+// conversacion aunque no este haciendo nada. Se distingue mirando si su tiempo
+// de CPU acumulado cambio; si no cambia, esta esperando.
+// No alcanza con "cambio el contador de CPU": una sesion quieta igual gasta
+// algo de a ratos (los MCP hacen su ronda, el proceso respira). Lo que separa
+// una sesion trabajando de una esperando es la TASA: trabajando consume una
+// fraccion apreciable de un nucleo, esperando consume casi nada.
+const VENTANA_MS = 30000;   // sobre cuanto tiempo se mide la tasa
+const TASA_ACTIVA = 0.04;   // 4% de un nucleo sostenido = esta haciendo algo
+const cpuSesiones = {};     // pid -> { hist: [{t, cpu}], desde }
+
+function marcarActividad(m) {
+  if (!m.claude) return;
+  const t = Date.parse(m.ts);
+
+  for (const s of m.claude.sesiones) {
+    let e = cpuSesiones[s.pid];
+    if (!e) { e = cpuSesiones[s.pid] = { hist: [], desde: t }; }
+
+    e.hist.push({ t: t, cpu: s.cpuSeg });
+    while (e.hist.length > 2 && t - e.hist[0].t > VENTANA_MS) e.hist.shift();
+
+    const viejo = e.hist[0];
+    const lapso = (t - viejo.t) / 1000;
+    // hasta tener ventana suficiente no se afirma nada: se asume en uso, que
+    // es el error barato (no sugerir cerrar algo que si se esta usando)
+    if (lapso < 6) { s.activa = true; s.quietaMs = 0; continue; }
+
+    const tasa = (s.cpuSeg - viejo.cpu) / lapso;
+    s.tasaCpu = Math.round(tasa * 1000) / 1000;
+    s.activa = tasa >= TASA_ACTIVA;
+    if (s.activa) e.desde = t;
+    s.quietaMs = t - e.desde;
+  }
+  // limpieza de las que ya no existen
+  const vivos = new Set(m.claude.sesiones.map(s => s.pid));
+  for (const p of Object.keys(cpuSesiones)) {
+    if (!vivos.has(Number(p))) delete cpuSesiones[p];
+  }
+}
+
 function novedadesClaude(m) {
   if (!m.claude) return;
   const ahora = new Set(m.claude.sesiones.map(s => s.pid));
@@ -534,6 +575,7 @@ function procesarMuestra(m) {
     m.alerta = disparados.map(d => d.msg);
   }
 
+  marcarActividad(m);
   novedadesClaude(m);
   m.novedadesClaude = novedades.slice(-8);
 

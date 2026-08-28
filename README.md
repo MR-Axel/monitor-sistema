@@ -115,7 +115,36 @@ promedio por sesión: 827 MB
 app de escritorio: 1,3 GB en 12 procesos
 ```
 
+Cada sesión se marca **en uso** o **quieta**, y ahí está lo útil: una sesión
+abierta no es una sesión trabajando. Queda viva guardando su conversación
+aunque no esté haciendo nada.
+
+No alcanza con mirar si el contador de CPU cambió: una sesión quieta igual gasta
+algo de a ratos, porque sus servidores MCP hacen su ronda. Lo que las separa es
+la **tasa**: medido sobre 30 segundos, una sesión esperando da 0 a 0,035 de un
+núcleo, que es el piso de ruido. El corte está en 0,04.
+
+```
+10 abiertas · 8,0 GB · 10 sin usarse ocupan 8,0 GB
+```
+
 La sección aparece sola si hay sesiones y se esconde si no hay ninguna.
+
+## Ajustes
+
+El botón **Ajustes** del encabezado abre tres controles, y todo queda guardado
+en el navegador:
+
+- **Nivel de detalle**: completo, compacto (sin explicaciones ni gráficos, solo
+  los números) o solo lo crítico (nada más que los medidores de arriba).
+- **Qué mostrar**: cada sección se apaga por separado. Lo apagado no se dibuja
+  ni ocupa lugar, y las tarjetas que quedan se reacomodan solas.
+- **Fondo tenue**: baja el contraste para que moleste menos sobre el escritorio.
+
+Sobre esto último, una aclaración honesta: **un navegador no puede ser
+transparente de verdad sobre el escritorio.** Eso necesita una ventana nativa.
+Lo que hace la opción es bajar el contraste, que es lo que se puede desde una
+página.
 
 ## Cerrar programas desde el panel
 

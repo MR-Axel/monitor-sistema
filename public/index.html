@@ -48,9 +48,38 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 .g{display:grid;gap:14px}
 .g4{grid-template-columns:repeat(4,1fr)}
 .g5{grid-template-columns:repeat(5,1fr)}
-.gb{grid-template-columns:1.15fr .8fr 1.05fr}
-.g2{grid-template-columns:1fr 1fr}
-.gcc{grid-template-columns:1.25fr 1fr}
+/* las tarjetas de detalle van en grillas auto-fit: si apagás una, las que
+   quedan se reacomodan solas en vez de dejar una columna vacía */
+.gdet{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
+
+/* ---- ajustes ---- */
+.panel-aj{padding:16px 18px}
+.aj-fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px}
+.opts{display:flex;flex-wrap:wrap;gap:7px}
+.opt{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:7px;
+  border:1px solid var(--borde);background:var(--fondo);cursor:pointer;font-size:13px;
+  color:var(--txt2);user-select:none}
+.opt:hover{border-color:var(--azul)}
+.opt.on{color:var(--txt);border-color:var(--azul);background:#11202e}
+.opt.on::before{content:'✓';color:var(--azul);font-weight:700}
+.opt.off::before{content:'○';color:var(--txt3)}
+
+/* ---- nivel de detalle ---- */
+/* compacta: se van las explicaciones y los gráficos, quedan los números */
+body.compacta .ayu,
+body.compacta .graf,
+body.compacta .vent .nota{display:none}
+body.compacta .caja{padding:11px 13px}
+body.compacta .g{gap:10px}
+/* mínima: solo los medidores de arriba */
+body.minima .gdet,
+body.minima [data-sec="carga"]{display:none}
+body.minima .ayu,body.minima .graf{display:none}
+
+/* ---- fondo más tenue ---- */
+body.tenue{background:rgba(13,17,23,.72)}
+body.tenue .caja{background:rgba(22,27,34,.72);border-color:rgba(38,48,61,.7)}
+body.tenue .panel-aj{background:rgba(22,27,34,.95)}
 
 /* --- por ANCHO --- */
 @media(max-width:1560px){ .g5{grid-template-columns:repeat(4,1fr)} }
@@ -190,13 +219,33 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
   <span class="eq" id="equipo">conectando…</span>
   <span class="der">
     <span class="reloj" id="reloj"></span>
+    <button id="ajustes" title="Qué mostrar y cuánto detalle">Ajustes</button>
     <button id="copiar">Copiar informe</button>
     <span class="est" id="est" style="color:var(--verde)"><i></i><span id="estTxt">Todo normal</span></span>
   </span>
 </div>
 
+<!-- Ajustes. Todo se guarda en el navegador, así que la próxima vez que abrís
+     el panel ya está como lo dejaste. -->
+<div class="caja panel-aj" id="panelAj" style="display:none">
+  <div class="aj-fila">
+    <div><div class="tit">Nivel de detalle</div>
+      <div class="ayu">Cuánta información por tarjeta</div>
+      <div class="opts" id="optVista"></div></div>
+    <div><div class="tit">Qué mostrar</div>
+      <div class="ayu">Lo que apagues no se dibuja ni ocupa lugar</div>
+      <div class="opts" id="optSecs"></div></div>
+    <div><div class="tit">Fondo</div>
+      <div class="ayu">Más tenue para que moleste menos sobre el escritorio</div>
+      <div class="opts" id="optFondo"></div>
+      <div class="ayu" style="margin-top:9px;max-width:250px">Un navegador no puede
+        ser transparente de verdad sobre el escritorio: eso necesita una ventana
+        nativa. Esto baja el contraste, que es lo que se puede.</div></div>
+  </div>
+</div>
+
 <!-- fila 1: diagnóstico eléctrico y térmico -->
-<div class="g g4">
+<div class="g g4" data-sec="diagnostico">
   <div class="caja" id="cV12"><div class="tit">Voltaje de la fuente</div>
     <div class="ayu">Línea de +12 V · normal entre 11,40 y 12,60</div>
     <div class="pri"><canvas id="gV12"></canvas><div>
@@ -219,7 +268,7 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
 </div>
 
 <!-- fila 2: carga, con la memoria bien separada -->
-<div class="g g5">
+<div class="g g5" data-sec="carga">
   <div class="caja carga"><div class="tit">Procesador</div><div class="ayu" id="ayuCPU">Uso del procesador</div>
     <div class="cif" id="nCPU">—</div><div class="sub" id="dCPU"></div>
     <div class="bar"><i id="bCPU"></i></div><canvas class="graf" id="grCPU"></canvas></div>
@@ -246,16 +295,16 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
 </div>
 
 <!-- fila 3: temperaturas, ventiladores, procesos -->
-<div class="g gb">
-  <div class="caja"><div class="tit">Todas las temperaturas</div>
+<div class="g gdet">
+  <div class="caja" data-sec="temperaturas"><div class="tit">Todas las temperaturas</div>
     <div class="ayu">Sensores reales de la placa, el procesador y los discos</div>
     <div class="temps" id="temps"><div class="nada">requiere LibreHardwareMonitor</div></div></div>
 
-  <div class="caja"><div class="tit">Ventiladores</div>
+  <div class="caja" data-sec="ventiladores"><div class="tit">Ventiladores</div>
     <div class="ayu">Los que no están enchufados a la placa no reportan vueltas</div>
     <div class="vents" id="vents"><div class="nada">requiere LibreHardwareMonitor</div></div></div>
 
-  <div class="caja"><div class="tit">Memoria por programa</div>
+  <div class="caja" data-sec="procesos"><div class="tit">Memoria por programa</div>
     <div class="ayu">Privada, sin contar lo que comparten entre procesos</div>
     <div class="scr"><table><thead><tr><th>Programa</th><th style="text-align:right">Proc</th>
       <th style="text-align:right">MB</th><th></th></tr></thead><tbody id="procs"></tbody></table></div></div>
@@ -264,17 +313,18 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
 <!-- Claude Code: se separa del resto porque bajo el mismo nombre de proceso
      conviven las sesiones del editor y la app de escritorio, que no son lo
      mismo y sumarlas juntas da un número que no significa nada -->
-<div class="g gcc" id="filaClaude" style="display:none">
-  <div class="caja"><div class="tit">Sesiones de Claude Code</div>
+<div class="g gdet" id="filaClaude" style="display:none">
+  <div class="caja" data-sec="claude"><div class="tit">Sesiones de Claude Code</div>
     <div class="ayu" id="ayuCC">Cada una con sus servidores MCP colgando</div>
-    <div class="scr" style="max-height:250px"><table><thead><tr>
-      <th style="width:66px">PID</th><th style="text-align:right">MB</th>
-      <th style="text-align:right">MCP</th><th style="text-align:right">Abierta</th>
-      <th style="text-align:right">CPU</th><th style="width:26px"></th>
+    <div class="scr" style="max-height:250px"><table class="tcc"><thead><tr>
+      <th style="width:16%">Estado</th><th style="width:14%">PID</th>
+      <th style="width:20%;text-align:right">Memoria</th>
+      <th style="width:24%;text-align:right">Abierta</th>
+      <th style="width:26%;text-align:right">Sin usarse</th>
       </tr></thead><tbody id="ccSesiones"></tbody></table></div>
     <div class="sub" id="ccResumen" style="margin-top:9px"></div></div>
 
-  <div class="caja"><div class="tit">Actividad de sesiones</div>
+  <div class="caja" data-sec="claude-actividad"><div class="tit">Actividad de sesiones</div>
     <div class="ayu">Qué se abrió y qué se cerró, detectado cada 2 segundos</div>
     <div class="scr reg" id="ccActividad" style="max-height:250px">
       <div class="nada">Sin movimientos desde que arrancó el monitor</div></div>
@@ -282,12 +332,12 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
 </div>
 
 <!-- fila 4: recomendaciones e incidentes, cada una en su panel -->
-<div class="g g2">
-  <div class="caja"><div class="tit">Recomendaciones</div>
+<div class="g gdet">
+  <div class="caja" data-sec="recomendaciones"><div class="tit">Recomendaciones</div>
     <div class="ayu">Qué conviene cerrar o revisar ahora mismo</div>
     <div class="recs" id="recs"></div></div>
 
-  <div class="caja"><div class="tit">Incidentes</div>
+  <div class="caja" data-sec="incidentes"><div class="tit">Incidentes</div>
     <div class="ayu">Solo se anota si el problema se sostiene varias muestras seguidas</div>
     <div class="scr reg" id="reg"><div class="nada">Ninguno en esta sesión</div></div></div>
 </div>
@@ -652,26 +702,41 @@ function haceCuanto(iso){
 function pintarClaude(m){
   const c=m.claude;
   const fila=$('filaClaude');
-  if(!c||!c.sesiones||!c.sesiones.length){ fila.style.display='none'; return; }
+  const apagada=aj.ocultas.includes('claude')&&aj.ocultas.includes('claude-actividad');
+  if(apagada||!c||!c.sesiones||!c.sesiones.length){ fila.style.display='none'; return; }
   fila.style.display='';
 
   const ses=c.sesiones.slice().sort((a,b)=>(b.mb+b.mcpMB)-(a.mb+a.mcpMB));
   const total=ses.reduce((t,s)=>t+s.mb+s.mcpMB,0);
   const maxS=ses[0] ? ses[0].mb+ses[0].mcpMB : 1;
 
-  $('ayuCC').innerHTML='<b>'+ses.length+'</b> sesiones · <b>'+(total/1024).toFixed(1)+
-    ' GB</b> contando sus servidores MCP';
+  const quietas=ses.filter(s=>!s.activa);
+  const mbQuietas=quietas.reduce((t,s)=>t+s.mb+s.mcpMB,0);
+  $('ayuCC').innerHTML='<b>'+ses.length+'</b> abiertas · <b>'+(total/1024).toFixed(1)+' GB</b>'+
+    (quietas.length
+      ? ' · <b>'+quietas.length+'</b> sin usarse ocupan <b style="color:var(--amar)">'+
+        (mbQuietas/1024).toFixed(1)+' GB</b>'
+      : '');
 
   $('ccSesiones').innerHTML=ses.map(s=>{
     const t=s.mb+s.mcpMB;
     const col=escala(t,[[300,C.verde],[600,C.verde],[900,C.amar],[1300,C.rojo]]);
-    return '<tr><td class="n" style="text-align:left;color:var(--txt3)">'+s.pid+'</td>'+
-      '<td class="n" style="color:'+col+'">'+s.mb+'</td>'+
-      '<td class="n">'+(s.mcp?'+'+s.mcpMB:'—')+'</td>'+
+    // lo que importa no es cuánta CPU gastó en total, sino hace cuánto que no
+    // gasta nada: eso es lo que dice si la podés cerrar
+    const quieta=s.quietaMs||0;
+    const punto=s.activa
+      ? '<span style="color:var(--verde)">● en uso</span>'
+      : '<span style="color:var(--txt3)">○ quieta</span>';
+    const desde=s.activa ? '—'
+      : (quieta<60000 ? Math.round(quieta/1000)+' s'
+        : quieta<3600000 ? Math.round(quieta/60000)+' min'
+        : (quieta/3600000).toFixed(1)+' h');
+    return '<tr'+(s.activa?' style="background:#0f2419"':'')+'>'+
+      '<td style="font-size:12.5px">'+punto+'</td>'+
+      '<td class="n" style="text-align:left;color:var(--txt3)">'+s.pid+'</td>'+
+      '<td class="n" style="color:'+col+'">'+t+' MB</td>'+
       '<td class="n">'+haceCuanto(s.inicio)+'</td>'+
-      '<td class="n">'+(s.cpuSeg>=60?Math.round(s.cpuSeg/60)+'m':s.cpuSeg+'s')+'</td>'+
-      '<td style="width:26px"><span class="mb" style="width:22px"><i style="width:'+
-        (100*t/maxS)+'%;background:'+col+'"></i></span></td></tr>';
+      '<td class="n" style="color:'+(quieta>1800000?'var(--amar)':'var(--txt2)')+'">'+desde+'</td></tr>';
   }).join('');
 
   const esc=c.escritorioMB
@@ -821,6 +886,62 @@ document.getElementById('procs').addEventListener('click',async ev=>{
     alert('Falló la petición: '+e.message);
   }
 });
+
+/* ------------------------------------------------------------- ajustes
+   Se guardan en el navegador. localStorage puede fallar (ventana privada,
+   datos de sitio bloqueados), así que todo va con try y valores por defecto:
+   si no se puede leer ni escribir, el panel funciona igual.              */
+const SECCIONES=[
+  ['diagnostico','Diagnóstico'], ['carga','Carga'],
+  ['temperaturas','Temperaturas'], ['ventiladores','Ventiladores'],
+  ['procesos','Procesos'], ['claude','Claude Code'],
+  ['claude-actividad','Actividad Claude'],
+  ['recomendaciones','Recomendaciones'], ['incidentes','Incidentes'],
+];
+const VISTAS=[['completa','Completo'],['compacta','Compacto'],['minima','Solo lo crítico']];
+
+let aj={vista:'completa',tenue:false,ocultas:[]};
+try{ const g=localStorage.getItem('monitor-ajustes'); if(g) aj=Object.assign(aj,JSON.parse(g)); }catch(e){}
+
+function guardarAj(){ try{ localStorage.setItem('monitor-ajustes',JSON.stringify(aj)); }catch(e){} }
+
+function aplicarAj(){
+  document.body.classList.toggle('compacta',aj.vista==='compacta');
+  document.body.classList.toggle('minima',aj.vista==='minima');
+  document.body.classList.toggle('tenue',!!aj.tenue);
+  document.querySelectorAll('[data-sec]').forEach(el=>{
+    el.style.display=aj.ocultas.includes(el.dataset.sec)?'none':'';
+  });
+  // la fila de Claude se esconde igual si no hay sesiones
+  if(ultima) pintarClaude(ultima);
+  dibujarAj();
+}
+
+function dibujarAj(){
+  $('optVista').innerHTML=VISTAS.map(([k,n])=>
+    '<span class="opt '+(aj.vista===k?'on':'off')+'" data-vista="'+k+'">'+n+'</span>').join('');
+  $('optSecs').innerHTML=SECCIONES.map(([k,n])=>
+    '<span class="opt '+(aj.ocultas.includes(k)?'off':'on')+'" data-secc="'+k+'">'+n+'</span>').join('');
+  $('optFondo').innerHTML=
+    '<span class="opt '+(aj.tenue?'on':'off')+'" data-tenue="1">Fondo tenue</span>';
+}
+
+$('ajustes').onclick=()=>{
+  const p=$('panelAj');
+  p.style.display=p.style.display==='none'?'':'none';
+  if(p.style.display==='') dibujarAj();
+};
+$('panelAj').addEventListener('click',ev=>{
+  const o=ev.target.closest('.opt'); if(!o) return;
+  if(o.dataset.vista) aj.vista=o.dataset.vista;
+  else if(o.dataset.tenue) aj.tenue=!aj.tenue;
+  else if(o.dataset.secc){
+    const k=o.dataset.secc;
+    aj.ocultas=aj.ocultas.includes(k)?aj.ocultas.filter(x=>x!==k):aj.ocultas.concat(k);
+  }
+  guardarAj(); aplicarAj();
+});
+aplicarAj();
 
 /* stream ---------------------------------------------------------------- */
 const es=new EventSource('/api/stream');
