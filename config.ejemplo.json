@@ -7,6 +7,36 @@
   "permitirCerrarProgramas": true,
   "abrirNavegador": "app",
   "ventana": "auto",
+  "agentes": [
+    {
+      "nombre": "Claude Code",
+      "activo": true,
+      "proceso": "claude",
+      "patronSesion": "output-format\\s+stream-json",
+      "transcripts": ".claude\\projects",
+      "patronId": "--resume=([0-9a-f\\-]{36})"
+    },
+    {
+      "nombre": "Codex",
+      "activo": false,
+      "proceso": "codex"
+    },
+    {
+      "nombre": "Gemini CLI",
+      "activo": false,
+      "proceso": "gemini"
+    },
+    {
+      "nombre": "Kimi",
+      "activo": false,
+      "proceso": "kimi"
+    },
+    {
+      "nombre": "Aider",
+      "activo": false,
+      "proceso": "aider"
+    }
+  ],
   "umbrales": {
     "cpuTempMax": 92,
     "gpuTempMax": 83,

@@ -51,9 +51,13 @@ button.listo{color:var(--verde);border-color:var(--verde)}
 /* las tarjetas de detalle van en grillas auto-fit: si apagás una, las que
    quedan se reacomodan solas en vez de dejar una columna vacía */
 .gdet{grid-template-columns:repeat(auto-fit,minmax(310px,1fr))}
-/* la de sesiones lleva tabla y necesita más ancho que las otras */
-.ancho2{grid-column:span 2}
-@media(max-width:940px){.ancho2{grid-column:auto}}
+/* fila final: la tabla de sesiones necesita ancho conocido, así que acá va
+   grilla explícita en vez de auto-fit (que la estiraba a media pantalla) */
+.gfin{grid-template-columns:1.7fr 1fr 1fr}
+@media(max-width:1280px){.gfin{grid-template-columns:1.6fr 1fr}
+  .gfin>:nth-child(3){grid-column:1/-1}}
+@media(max-width:940px){.gfin{grid-template-columns:1fr}
+  .gfin>:nth-child(3){grid-column:auto}}
 
 /* ---- ajustes ---- */
 .panel-aj{padding:16px 18px}
@@ -208,6 +212,11 @@ button.x{background:none;border:0;color:var(--txt3);font-size:14px;padding:2px 5
 tr:hover button.x{opacity:1}
 button.x:hover{background:#3a1518;color:var(--rojo)}
 button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
+/* el PID se muestra siempre: hace falta para armar el comando a mano */
+.pid{font-family:var(--num);font-size:11.5px;color:var(--txt3);margin-left:7px;
+  padding:1px 5px;border-radius:4px;cursor:pointer;border:1px solid transparent}
+.pid:hover{border-color:var(--borde);color:var(--azul)}
+.pid.copiado{color:var(--verde);border-color:var(--verde)}
 .reg div{display:flex;gap:10px;padding:3.5px 0;border-top:1px solid var(--borde);font-size:13px}
 .reg time{color:var(--txt3);font-family:var(--num);flex-shrink:0}
 .nada{color:var(--txt3);font-size:13.5px;padding:10px 0}
@@ -297,7 +306,7 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
     <div class="bar"><i id="bGPU"></i></div><canvas class="graf" id="grGPU"></canvas></div>
 </div>
 
-<!-- fila 3: temperaturas, ventiladores, procesos -->
+<!-- fila 3: sensores y qué conviene hacer -->
 <div class="g gdet">
   <div class="caja" data-sec="temperaturas"><div class="tit">Todas las temperaturas</div>
     <div class="ayu">Sensores reales de la placa, el procesador y los discos</div>
@@ -307,37 +316,34 @@ button.x:disabled{opacity:1;cursor:default;background:none;color:var(--verde)}
     <div class="ayu">Los que no están enchufados a la placa no reportan vueltas</div>
     <div class="vents" id="vents"><div class="nada">requiere LibreHardwareMonitor</div></div></div>
 
+  <div class="caja" data-sec="recomendaciones"><div class="tit">Recomendaciones</div>
+    <div class="ayu">Qué conviene cerrar o revisar ahora mismo</div>
+    <div class="recs" id="recs"></div></div>
+</div>
+
+<!-- fila 4: todo lo que es memoria por proceso, junto.
+     Grilla explícita y no auto-fit: la tabla de sesiones necesita ancho fijo
+     conocido, si no se estira y las columnas quedan a media pantalla -->
+<div class="g gfin">
+  <div class="caja" data-sec="claude" id="cajaClaude" style="display:none">
+    <div class="tit" id="tituloAgentes">Sesiones de agentes</div>
+    <div class="ayu" id="ayuCC">Cada una con sus servidores MCP colgando</div>
+    <div class="scr" style="max-height:290px"><table class="tcc"><thead><tr>
+      <th style="width:46%">Sesión</th>
+      <th style="width:15%;text-align:right">Memoria</th>
+      <th style="width:17%;text-align:right">Sin usarse</th>
+      <th style="width:14%;text-align:right">Abierta</th>
+      <th style="width:8%"></th>
+      </tr></thead><tbody id="ccSesiones"></tbody></table></div>
+    <div class="sub" id="ccResumen" style="margin-top:9px"></div>
+    <div style="margin-top:10px"><button id="ccLimpiar" style="display:none"></button></div>
+    <div class="ayu" id="ccProyectos" style="margin:11px 0 0"></div>
+    <div class="reg" id="ccActividad" style="max-height:70px;overflow-y:auto"></div></div>
+
   <div class="caja" data-sec="procesos"><div class="tit">Memoria por programa</div>
     <div class="ayu">Privada, sin contar lo que comparten entre procesos</div>
     <div class="scr"><table><thead><tr><th>Programa</th><th style="text-align:right">Proc</th>
       <th style="text-align:right">MB</th><th></th></tr></thead><tbody id="procs"></tbody></table></div></div>
-</div>
-
-<!-- Claude Code: se separa del resto porque bajo el mismo nombre de proceso
-     conviven las sesiones del editor y la app de escritorio, que no son lo
-     mismo y sumarlas juntas da un número que no significa nada -->
-<div class="g gdet" id="filaClaude" style="display:none">
-  <div class="caja ancho2" data-sec="claude"><div class="tit">Sesiones de Claude Code</div>
-    <div class="ayu" id="ayuCC">Cada una con sus servidores MCP colgando</div>
-    <div class="scr" style="max-height:300px"><table class="tcc"><thead><tr>
-      <th style="width:40%">Sesión</th>
-      <th style="width:16%;text-align:right">Memoria</th>
-      <th style="width:18%;text-align:right">Sin usarse</th>
-      <th style="width:16%;text-align:right">Abierta</th>
-      <th style="width:10%"></th>
-      </tr></thead><tbody id="ccSesiones"></tbody></table></div>
-    <div class="sub" id="ccResumen" style="margin-top:9px"></div>
-    <div style="margin-top:10px"><button id="ccLimpiar" style="display:none"></button></div>
-    <!-- la actividad va acá adentro: es lo mismo que la tabla, no otro tema -->
-    <div class="ayu" id="ccProyectos" style="margin:11px 0 0"></div>
-    <div class="reg" id="ccActividad" style="max-height:80px;overflow-y:auto"></div></div>
-</div>
-
-<!-- fila 4: recomendaciones e incidentes, cada una en su panel -->
-<div class="g gdet">
-  <div class="caja" data-sec="recomendaciones"><div class="tit">Recomendaciones</div>
-    <div class="ayu">Qué conviene cerrar o revisar ahora mismo</div>
-    <div class="recs" id="recs"></div></div>
 
   <div class="caja" data-sec="incidentes"><div class="tit">Incidentes</div>
     <div class="ayu">Solo se anota si el problema se sostiene varias muestras seguidas</div>
@@ -702,41 +708,41 @@ function haceCuanto(iso){
   return h+' h'+(mn?' '+mn+'m':'');
 }
 function pintarClaude(m){
-  const c=m.claude;
-  const fila=$('filaClaude');
-  const apagada=aj.ocultas.includes('claude');
-  if(apagada||!c||!c.sesiones||!c.sesiones.length){ fila.style.display='none'; return; }
-  fila.style.display='';
+  const ags=(m.agentes||[]).filter(a=>a.sesiones.length||a.otrosProcs);
+  const caja=$('cajaClaude');
+  if(aj.ocultas.includes('claude')||!ags.length){ caja.style.display='none'; return; }
+  caja.style.display='';
 
-  const ses=c.sesiones.slice().sort((a,b)=>(b.mb+b.mcpMB)-(a.mb+a.mcpMB));
+  // una sola tabla con todos los agentes activos; si hay uno solo, su nombre
+  // va en el título y no se repite en cada fila
+  const uno=ags.length===1;
+  $('tituloAgentes').textContent=uno?('Sesiones de '+ags[0].nombre):'Sesiones de agentes';
+
+  const ses=[];
+  for(const a of ags) for(const x of a.sesiones) ses.push(Object.assign({agente:a.nombre},x));
+  ses.sort((p,q)=>(q.mb+q.mcpMB)-(p.mb+p.mcpMB));
+
   const total=ses.reduce((t,s)=>t+s.mb+s.mcpMB,0);
-  const maxS=ses[0] ? ses[0].mb+ses[0].mcpMB : 1;
-
   const quietas=ses.filter(s=>!s.activa);
-  const mbQuietas=quietas.reduce((t,s)=>t+s.mb+s.mcpMB,0);
+  const mbQ=quietas.reduce((t,s)=>t+s.mb+s.mcpMB,0);
   $('ayuCC').innerHTML='<b>'+ses.length+'</b> abiertas · <b>'+(total/1024).toFixed(1)+' GB</b>'+
-    (quietas.length
-      ? ' · <b>'+quietas.length+'</b> sin usarse ocupan <b style="color:var(--amar)">'+
-        (mbQuietas/1024).toFixed(1)+' GB</b>'
-      : '');
+    (quietas.length?' · <b>'+quietas.length+'</b> sin usarse ocupan <b style="color:var(--amar)">'+
+      (mbQ/1024).toFixed(1)+' GB</b>':'');
 
   $('ccSesiones').innerHTML=ses.map(s=>{
     const t=s.mb+s.mcpMB;
     const col=escala(t,[[300,C.verde],[600,C.verde],[900,C.amar],[1300,C.rojo]]);
-    // el dato que decide si la podés cerrar es hace cuánto que no trabaja,
-    // no cuánta CPU gastó en total
-    const inact=s.ultima ? Date.now()-new Date(s.ultima) : (s.quietaMs||0);
-    const desde=s.activa ? '<span style="color:var(--verde)">en uso</span>'
-      : (inact<60000 ? Math.round(inact/1000)+' s'
-        : inact<3600000 ? Math.round(inact/60000)+' min'
-        : (inact/3600000).toFixed(1)+' h');
-    const nombre=s.proyecto
-      ? '<b style="color:var(--txt)">'+s.proyecto+'</b>'
-      : '<span style="color:var(--txt3)">PID '+s.pid+'</span>';
-    const sub=s.titulo
-      ? '<div style="font-size:11.5px;color:var(--txt3);overflow:hidden;'+
-        'text-overflow:ellipsis;white-space:nowrap">'+s.titulo+'</div>'
-      : '';
+    const inact=s.ultima?Date.now()-new Date(s.ultima):(s.quietaMs||0);
+    const desde=s.activa?'<span style="color:var(--verde)">en uso</span>'
+      :(inact<60000?Math.round(inact/1000)+' s'
+       :inact<3600000?Math.round(inact/60000)+' min'
+       :(inact/3600000).toFixed(1)+' h');
+    // el PID va siempre a la vista: hace falta para armar el comando a mano
+    const nombre=(uno?'':'<span style="color:var(--viol);font-size:11.5px">'+s.agente+'</span> ')+
+      (s.proyecto?'<b style="color:var(--txt)">'+s.proyecto+'</b>':'')+
+      '<span class="pid" data-pid="'+s.pid+'" title="Copiar el comando para cerrarlo">'+s.pid+'</span>';
+    const sub=s.titulo?'<div style="font-size:11.5px;color:var(--txt3);overflow:hidden;'+
+      'text-overflow:ellipsis;white-space:nowrap">'+s.titulo+'</div>':'';
     return '<tr'+(s.activa?' style="background:#0f2419"':'')+'>'+
       '<td style="font-size:13px">'+(s.activa?'● ':'○ ')+nombre+sub+'</td>'+
       '<td class="n" style="color:'+col+'">'+t+' MB</td>'+
@@ -746,35 +752,29 @@ function pintarClaude(m){
         '" data-nom="'+(s.proyecto||('PID '+s.pid))+'" title="Cerrar esta sesión">✕</button></td></tr>';
   }).join('');
 
-  // botón para cerrar de una todas las que hace rato no trabajan
-  const viejas=ses.filter(s=>!s.activa && s.ultima && (Date.now()-new Date(s.ultima))>1800000);
+  const viejas=ses.filter(s=>!s.activa&&s.ultima&&(Date.now()-new Date(s.ultima))>1800000);
   const btn=$('ccLimpiar');
   if(viejas.length>1){
     const mbV=viejas.reduce((a,s)=>a+s.mb+s.mcpMB,0);
     btn.style.display='';
     btn.textContent='Cerrar las '+viejas.length+' sin usar hace +30 min · libera '+(mbV/1024).toFixed(1)+' GB';
     btn.dataset.pids=viejas.map(s=>s.pid).join(',');
-  } else { btn.style.display='none'; }
+  } else btn.style.display='none';
 
-  const esc=c.escritorioMB
-    ? '<br>App de escritorio: <b>'+(c.escritorioMB/1024).toFixed(1)+'</b> GB en <b>'+
-      c.escritorioProcs+'</b> procesos (Electron, aparte de las sesiones)'
-    : '';
-  $('ccResumen').innerHTML='Promedio por sesión: <b>'+Math.round(total/ses.length)+'</b> MB'+esc;
+  // procesos del mismo binario que no son sesiones (apps de escritorio)
+  const otros=ags.filter(a=>a.otrosProcs);
+  $('ccResumen').innerHTML='Promedio por sesión: <b>'+Math.round(total/(ses.length||1))+'</b> MB'+
+    (otros.length?'<br>'+otros.map(a=>a.nombre+' de escritorio: <b>'+(a.otrosMB/1024).toFixed(1)+
+      '</b> GB en <b>'+a.otrosProcs+'</b> procesos').join('<br>'):'');
 
-  // aperturas y cierres
   const nov=m.novedadesClaude||[];
-  $('ccActividad').innerHTML=!nov.length ? '' : nov.slice().reverse().map(n=>
+  $('ccActividad').innerHTML=!nov.length?'':nov.slice().reverse().map(n=>
     '<div><time>'+hora(n.ts)+'</time><span style="color:'+
     (n.tipo==='abrio'?'var(--verde)':'var(--txt3)')+'">'+
-    (n.tipo==='abrio'?'▲ ':'▼ ')+n.texto+
-    (n.mb?' · '+n.mb+' MB':'')+'</span></div>').join('');
-
-  const pr=c.proyectos||[];
-  $('ccProyectos').innerHTML=pr.length
-    ? 'Proyectos escribiendo hace poco: '+pr.map(p=>'<b>'+p.n+'</b>').join(', ')
-    : '<span style="color:var(--txt3)">Ningún proyecto escribió en los últimos 10 minutos</span>';
+    (n.tipo==='abrio'?'▲ ':'▼ ')+n.texto+(n.mb?' · '+n.mb+' MB':'')+'</span></div>').join('');
+  $('ccProyectos').innerHTML='';
 }
+
 function anotar(ts,msg){
   const k=ts+msg; if(registro.some(r=>r.k===k))return;
   registro.push({k:k,ts:ts,msg:msg}); if(registro.length>150)registro.shift();
@@ -917,6 +917,17 @@ async function cerrarSesion(pid){
 }
 
 document.getElementById('ccSesiones').addEventListener('click',async ev=>{
+  // tocar el PID copia el comando, por si preferís cerrarlo desde tu terminal
+  const chip=ev.target.closest('.pid');
+  if(chip){
+    const cmd='taskkill /PID '+chip.dataset.pid+' /T /F';
+    try{ await navigator.clipboard.writeText(cmd); }
+    catch(e){ const a=document.createElement('textarea'); a.value=cmd;
+      document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+    const t=chip.textContent; chip.textContent='copiado'; chip.classList.add('copiado');
+    setTimeout(()=>{chip.textContent=t;chip.classList.remove('copiado');},1400);
+    return;
+  }
   const b=ev.target.closest('button.cerrar-ses'); if(!b) return;
   if(!token){ alert('Cerrar está deshabilitado en config.json.'); return; }
   const pid=Number(b.dataset.pid);
@@ -951,7 +962,7 @@ $('ccLimpiar').onclick=async ev=>{
 const SECCIONES=[
   ['diagnostico','Diagnóstico'], ['carga','Carga'],
   ['temperaturas','Temperaturas'], ['ventiladores','Ventiladores'],
-  ['procesos','Procesos'], ['claude','Claude Code'],
+  ['procesos','Procesos'], ['claude','Agentes de IA'],
   ['recomendaciones','Recomendaciones'], ['incidentes','Incidentes'],
 ];
 const VISTAS=[['completa','Completo'],['compacta','Compacto'],['minima','Solo lo crítico']];

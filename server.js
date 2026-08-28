@@ -41,6 +41,27 @@ const CONFIG_POR_DEFECTO = {
   //   "normal" pestaña en tu navegador de siempre; queda abierta al salir
   //   "no"     no abre nada
   abrirNavegador: 'app',
+  // Qué agentes de IA seguir. Cada uno se busca por nombre de proceso y, si
+  // hace falta, se filtra por un patrón de su línea de comandos (los CLI
+  // suelen compartir el binario con la app de escritorio).
+  //   transcripts + patronId son opcionales: si el agente guarda un archivo
+  //   por conversación y su id aparece en la línea de comandos, de ahí salen
+  //   el proyecto y el título. Si no, se muestra el PID y listo.
+  agentes: [
+    {
+      nombre: 'Claude Code',
+      activo: true,
+      proceso: 'claude',
+      patronSesion: 'output-format\\s+stream-json',
+      transcripts: '.claude\\projects',
+      patronId: '--resume=([0-9a-f\\-]{36})',
+    },
+    { nombre: 'Codex', activo: false, proceso: 'codex' },
+    { nombre: 'Gemini CLI', activo: false, proceso: 'gemini' },
+    { nombre: 'Kimi', activo: false, proceso: 'kimi' },
+    { nombre: 'Aider', activo: false, proceso: 'aider' },
+    { nombre: 'Cursor', activo: false, proceso: 'Cursor', patronSesion: 'extensionHost' },
+  ],
   // Tamaño de esa ventana:
   //   "auto"        casi toda la pantalla, centrada, pero en ventana (por defecto)
   //   "ANCHOxALTO"  medida fija, por ejemplo "1280x900"
@@ -374,11 +395,20 @@ function interpretarLHM(sensores) {
 }
 
 // ---------------------------------------------------------------- sensores
+function rutaAgentes() {
+  const r = path.join(os.tmpdir(), 'monitor-sistema-agentes-' + PUERTO + '.json');
+  try { fs.writeFileSync(r, JSON.stringify(CFG.agentes || []), 'utf8'); } catch (e) {}
+  return r;
+}
+
 function arrancarSensores() {
   const p = spawn('powershell.exe', [
     '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
     '-File', path.join(RAIZ, 'sensores.ps1'),
     '-IntervaloMs', String(INTERVALO),
+    // Se pasa por ARCHIVO y no como argumento: el JSON lleva comillas, y el
+    // escapado de comillas en argumentos de Windows las rompe a mitad de camino.
+    '-AgentesArchivo', rutaAgentes(),
   ], { windowsHide: true });
 
   let resto = '';
@@ -446,10 +476,11 @@ const TASA_ACTIVA = 0.04;   // 4% de un nucleo sostenido = esta haciendo algo
 const cpuSesiones = {};     // pid -> { hist: [{t, cpu}], desde }
 
 function marcarActividad(m) {
-  if (!m.claude) return;
+  if (!m.agentes) return;
   const t = Date.parse(m.ts);
+  const todas = todasLasSesiones(m);
 
-  for (const s of m.claude.sesiones) {
+  for (const s of todas) {
     let e = cpuSesiones[s.pid];
     if (!e) { e = cpuSesiones[s.pid] = { hist: [], desde: t }; }
 
@@ -469,15 +500,22 @@ function marcarActividad(m) {
     s.quietaMs = t - e.desde;
   }
   // limpieza de las que ya no existen
-  const vivos = new Set(m.claude.sesiones.map(s => s.pid));
+  const vivos = new Set(todas.map(s => s.pid));
   for (const p of Object.keys(cpuSesiones)) {
     if (!vivos.has(Number(p))) delete cpuSesiones[p];
   }
 }
 
+function todasLasSesiones(m) {
+  if (!m.agentes) return [];
+  return m.agentes.reduce((t, a) => t.concat(a.sesiones.map(s =>
+    Object.assign(s, { agente: a.nombre }))), []);
+}
+
 function novedadesClaude(m) {
-  if (!m.claude) return;
-  const ahora = new Set(m.claude.sesiones.map(s => s.pid));
+  if (!m.agentes) return;
+  const ses = todasLasSesiones(m);
+  const ahora = new Set(ses.map(s => s.pid));
 
   if (pidsClaude === null) { pidsClaude = ahora; return; } // primera muestra
 
@@ -485,11 +523,12 @@ function novedadesClaude(m) {
   const idas = [...pidsClaude].filter(p => !ahora.has(p));
 
   for (const p of nuevas) {
-    const s = m.claude.sesiones.find(x => x.pid === p);
-    registrarClaude(m.ts, 'abrio', 'Sesión de Claude Code abierta (PID ' + p + ')', s ? s.mb : null);
+    const s = ses.find(x => x.pid === p);
+    registrarClaude(m.ts, 'abrio',
+      'Sesión de ' + (s ? s.agente : 'agente') + ' abierta (PID ' + p + ')', s ? s.mb : null);
   }
   for (const p of idas) {
-    registrarClaude(m.ts, 'cerro', 'Sesión de Claude Code cerrada (PID ' + p + ')', null);
+    registrarClaude(m.ts, 'cerro', 'Sesión cerrada (PID ' + p + ')', null);
   }
   pidsClaude = ahora;
 }
@@ -852,9 +891,10 @@ const server = http.createServer((req, res) => {
       if (d.token !== TOKEN) return responder(403, { error: 'Token invalido' });
 
       const ult = historial[historial.length - 1];
-      const conocidas = ult && ult.claude ? ult.claude.sesiones.map(s => s.pid) : [];
+      const conocidas = ult && ult.agentes
+        ? ult.agentes.reduce((t, a) => t.concat(a.sesiones.map(s => s.pid)), []) : [];
       if (!conocidas.includes(d.pid)) {
-        return responder(403, { error: 'Ese PID no es una sesión de Claude Code conocida' });
+        return responder(403, { error: 'Ese PID no es una sesión de agente conocida' });
       }
 
       const p = spawn('taskkill', ['/PID', String(d.pid), '/T', '/F'], { windowsHide: true });

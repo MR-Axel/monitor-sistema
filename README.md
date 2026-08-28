@@ -94,11 +94,27 @@ Corte en muestras-2026-08-28.jsonl · última muestra 28/8/2026, 01:12:44
 
 Los archivos crudos quedan en `logs/`, un JSON por línea.
 
-## Sección de Claude Code
+## Sección de agentes de IA
 
-Si usás Claude Code, el panel muestra sus sesiones aparte del resto. El motivo
-es que bajo el mismo nombre de proceso conviven dos cosas distintas, y sumarlas
-juntas da un número que no significa nada:
+El panel sigue los CLI de agentes que corran como proceso propio. Cuáles se
+siguen sale de `config.json`: **Claude Code viene activo por defecto** y el
+resto (Codex, Gemini CLI, Kimi, Aider) se prende ahí. Para agregar otro alcanza
+con su nombre de proceso.
+
+```json
+"agentes": [
+  { "nombre": "Claude Code", "activo": true, "proceso": "claude",
+    "patronSesion": "output-format\s+stream-json",
+    "transcripts": ".claude\projects",
+    "patronId": "--resume=([0-9a-f\-]{36})" },
+  { "nombre": "Codex", "activo": false, "proceso": "codex" }
+]
+```
+
+`patronSesion` filtra por la línea de comandos, y hace falta porque varios
+comparten el binario entre el CLI y la app de escritorio. En Claude, por
+ejemplo, conviven dos cosas distintas bajo el mismo `claude.exe` y sumarlas da
+un número que no significa nada:
 
 - **Las sesiones del CLI**, que cuelgan del editor y se reconocen por
   `--output-format stream-json`. Cada una arrastra sus servidores MCP.
@@ -124,8 +140,10 @@ algo de a ratos, porque sus servidores MCP hacen su ronda. Lo que las separa es
 la **tasa**: medido sobre 30 segundos, una sesión esperando da 0 a 0,035 de un
 núcleo, que es el piso de ruido. El corte está en 0,04.
 
-Cada sesión lleva `--resume=<uuid>` en su línea de comandos, y ese uuid es el
-nombre de su transcript dentro de `~/.claude/projects/`. De ahí salen **el
+`transcripts` y `patronId` son opcionales. Si el agente guarda un archivo por
+conversación y su id aparece en la línea de comandos, de ahí salen el proyecto
+y el título; si no, se muestra el PID y listo. En Claude cada sesión lleva
+`--resume=<uuid>` y ese uuid es el nombre de su transcript. De ahí salen **el
 proyecto, el primer mensaje como título y la fecha de la última escritura**, que
 es el dato que de verdad dice hace cuánto que no la usás:
 

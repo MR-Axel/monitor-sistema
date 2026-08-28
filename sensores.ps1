@@ -9,7 +9,7 @@
 #   Get-NetAdapterStatistics -> bytes de red (se derivan por delta)
 # El % de CPU lo calcula server.js con os.cpus(), que tampoco necesita WMI.
 
-param([int]$IntervaloMs = 2000)
+param([int]$IntervaloMs = 2000, [string]$AgentesArchivo = '')
 
 $ErrorActionPreference = 'SilentlyContinue'
 $OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -39,16 +39,29 @@ $antesTiempo = $null
 # primer mensaje, que sirve de titulo. Se cachea porque no cambia y los
 # transcripts pueden pesar cientos de MB.
 $titulos = @{}
-$raizProyectos = Join-Path $env:USERPROFILE '.claude\projects'
+# Los agentes a seguir vienen de config.json, via server.js. Claude Code es
+# solo el que viene activo por defecto: cualquier CLI que corra como proceso
+# propio se puede agregar ahi sin tocar este archivo.
+$AGENTES = @()
+if ($AgentesArchivo -and (Test-Path $AgentesArchivo)) {
+    try {
+        # OJO con el @() de afuera: en Windows PowerShell 5.1, ConvertFrom-Json
+        # devuelve el array como UN solo objeto por la tuberia, asi que @() lo
+        # envuelve en un array de un elemento en vez de darnos los N agentes.
+        # El ForEach-Object fuerza la enumeracion.
+        $AGENTES = @(Get-Content $AgentesArchivo -Raw | ConvertFrom-Json | ForEach-Object { $_ })
+    } catch { $AGENTES = @() }
+}
 
-function Obtener-Titulo($uuid) {
+function Obtener-Titulo($uuid, $raiz) {
     if ($titulos.ContainsKey($uuid)) { return $titulos[$uuid] }
+    if (-not $raiz -or -not (Test-Path $raiz)) { return $null }
 
     $r = [ordered]@{ proyecto = $null; titulo = $null; ruta = $null }
     # Se guarda tambien la RUTA del transcript. Sin eso habria que hacer una
     # busqueda recursiva por todas las carpetas de proyecto en cada muestra,
     # o sea cada 2 segundos por sesion, que es carisimo.
-    $f = Get-ChildItem $raizProyectos -Recurse -Filter "$uuid.jsonl" -ErrorAction SilentlyContinue |
+    $f = Get-ChildItem $raiz -Recurse -Filter "$uuid.jsonl" -ErrorAction SilentlyContinue |
          Select-Object -First 1
     if ($f) {
         $r.ruta = $f.FullName
@@ -115,25 +128,40 @@ while ($true) {
     $antesDisco  = @($ioLee, $ioEsc)
     $antesTiempo = $t0
 
-    # --- Claude Code -------------------------------------------------------
-    # Ojo: bajo el mismo nombre claude.exe conviven dos cosas distintas.
-    #   1. Las sesiones del CLI, que cuelgan del editor y se reconocen por
-    #      --output-format stream-json.
-    #   2. La aplicacion de escritorio, que es Electron: un proceso principal
-    #      sin argumentos mas su cortejo de --type=renderer/gpu/utility.
+    # --- agentes de IA -----------------------------------------------------
+    # Cualquier CLI de agente que corra como proceso propio se puede seguir:
+    # sale de la lista "agentes" de config.json. Claude Code viene activo por
+    # defecto, el resto se prende ahi.
+    #
+    # El filtro por linea de comandos importa porque varios comparten el
+    # binario entre el CLI y la app de escritorio: en Claude, las sesiones
+    # llevan --output-format stream-json y la app de escritorio es Electron,
+    # un proceso principal mas su cortejo de --type=renderer/gpu/utility.
     # Sumarlas juntas da un numero que no significa nada.
-    $claude = @($procs | Where-Object { $_.Name -eq 'claude.exe' })
-    $sesiones = @()
-    $escritorioMB = 0
-    $escritorioProcs = 0
+    $agentesSalida = @()
 
-    foreach ($c in $claude) {
-        $cl = $c.CommandLine
-        $mb = [math]::Round($c.PrivatePageCount / 1048576, 0)
+    foreach ($ag in $AGENTES) {
+        if (-not $ag.activo) { continue }
+        $nombreProc = "$($ag.proceso).exe"
+        $cands = @($procs | Where-Object { $_.Name -eq $nombreProc })
+        if (-not $cands) { continue }
 
-        if ($cl -and $cl -match 'output-format\s+stream-json') {
+        $raiz = $null
+        if ($ag.transcripts) { $raiz = Join-Path $env:USERPROFILE $ag.transcripts }
+
+        $sesiones = @()
+        $otrosMB = 0
+        $otrosProcs = 0
+
+        foreach ($c in $cands) {
+            $cl = $c.CommandLine
+            $mb = [math]::Round($c.PrivatePageCount / 1048576, 0)
+            $esSesion = if ($ag.patronSesion) { $cl -and $cl -match $ag.patronSesion } else { $true }
+
+            if (-not $esSesion) { $otrosMB += $mb; $otrosProcs++; continue }
+
+            # los hijos de una sesion son sus servidores MCP (cada uno cmd -> node)
             $hijos = @($procs | Where-Object { $_.ParentProcessId -eq $c.ProcessId })
-            # los hijos de una sesion son los servidores MCP (cada uno cmd -> node)
             $mcp = @($hijos | Where-Object { $_.Name -eq 'cmd.exe' }).Count
             $mcpMB = 0
             foreach ($h in $hijos) {
@@ -142,11 +170,15 @@ while ($true) {
                     $mcpMB += [math]::Round($n.PrivatePageCount / 1048576, 0)
                 }
             }
-            $uuid = if ($cl -match '--resume=([0-9a-f\-]{36})') { $matches[1] } else { $null }
-            $info = if ($uuid) { Obtener-Titulo $uuid } else { $null }
-            # La fecha del transcript se relee en cada muestra porque es lo que
-            # dice cuando trabajo por ultima vez, pero se usa la ruta cacheada:
-            # buscarla de nuevo cada 2 segundos por sesion seria carisimo.
+
+            # proyecto y titulo, solo si el agente guarda transcripts y su id
+            # aparece en la linea de comandos
+            $uuid = $null
+            if ($ag.patronId -and $cl -and $cl -match $ag.patronId) { $uuid = $matches[1] }
+            $info = if ($uuid) { Obtener-Titulo $uuid $raiz } else { $null }
+            # La fecha se relee en cada muestra porque es lo que dice cuando
+            # trabajo por ultima vez, pero sobre la ruta cacheada: volver a
+            # buscar el archivo cada 2 segundos por sesion seria carisimo.
             $ultima = $null
             if ($info -and $info.ruta -and (Test-Path $info.ruta)) {
                 $ultima = (Get-Item $info.ruta).LastWriteTime.ToString('o')
@@ -164,30 +196,17 @@ while ($true) {
                 titulo   = if ($info) { $info.titulo } else { $null }
                 ultima   = $ultima
             }
-        } else {
-            $escritorioMB += $mb
-            $escritorioProcs++
         }
-    }
 
-    # Proyectos con actividad reciente: se deduce de los transcripts que Claude
-    # va escribiendo. No es el directorio real del proceso (Windows no lo
-    # expone facil), es el ultimo proyecto que escribio en disco.
-    $activos = @()
-    $raizProy = Join-Path $env:USERPROFILE '.claude\projects'
-    if (Test-Path $raizProy) {
-        $corte = (Get-Date).AddMinutes(-10)
-        $activos = @(Get-ChildItem $raizProy -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-            $u = Get-ChildItem $_.FullName -Filter *.jsonl -ErrorAction SilentlyContinue |
-                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($u -and $u.LastWriteTime -gt $corte) {
-                [ordered]@{
-                    # el nombre de carpeta es la ruta con guiones: se deja el final
-                    n = ($_.Name -split '-' | Where-Object { $_ } | Select-Object -Last 2) -join '-'
-                    m = $u.LastWriteTime.ToString('o')
-                }
+        if ($sesiones.Count -or $otrosProcs) {
+            $agentesSalida += [ordered]@{
+                nombre     = $ag.nombre
+                proceso    = $ag.proceso
+                sesiones   = @($sesiones)
+                otrosMB    = [int]$otrosMB
+                otrosProcs = [int]$otrosProcs
             }
-        })
+        }
     }
 
     # --- top 8 procesos por memoria privada --------------------------------
@@ -218,12 +237,7 @@ while ($true) {
         redMbps      = $redMbps
         nProcesos    = $procs.Count
         procesos     = @($tops)
-        claude       = [ordered]@{
-            sesiones        = @($sesiones)
-            escritorioMB    = [int]$escritorioMB
-            escritorioProcs = [int]$escritorioProcs
-            proyectos       = @($activos)
-        }
+        agentes      = @($agentesSalida)
     } | ConvertTo-Json -Compress -Depth 5
 
     $tardo = ((Get-Date) - $t0).TotalMilliseconds
