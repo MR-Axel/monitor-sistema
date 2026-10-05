@@ -284,3 +284,7 @@ MIT — ver [LICENSE](LICENSE).
 
 LibreHardwareMonitor es un proyecto aparte, bajo MPL-2.0. Este repositorio no
 incluye su binario: lo descarga de su release oficial.
+
+## Apoyar
+
+Es gratis y de código abierto. Si te sirvió, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/mraxel).
