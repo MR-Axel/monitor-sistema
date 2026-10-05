@@ -287,4 +287,6 @@ incluye su binario: lo descarga de su release oficial.
 
 ## Apoyar
 
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/mraxel)
+
 Es gratis y de código abierto. Si te sirvió, podés [bancar la próxima herramienta en Ko-fi](https://ko-fi.com/mraxel).
